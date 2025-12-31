@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('all_cases', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->foreignUuid('user_id')->constrained()->onDelete('cascade');
+            $table->foreignUuid ('user_id')->constrained()->onDelete('cascade');
             $table->enum('issue_type', [
                 'landlord_tenant',
                 'employment',
