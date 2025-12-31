@@ -24,7 +24,7 @@ return new class extends Migration
             ]);
             $table->string('location_city')->nullable();
             $table->string('location_state', 100);
-            $table->string('location_country', 2); // ISO 3166-1 alpha-2
+            $table->string('location_country', 2);
             $table->text('situation_description');
             $table->enum('status', ['active', 'resolved', 'archived'])->default('active');
             $table->enum('resolution_type', ['won', 'settled', 'lost', 'dropped'])->nullable();

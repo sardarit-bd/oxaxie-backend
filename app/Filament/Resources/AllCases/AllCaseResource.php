@@ -13,10 +13,12 @@ use Filament\Actions\ForceDeleteAction;
 use Filament\Actions\ForceDeleteBulkAction;
 use Filament\Actions\RestoreAction;
 use Filament\Actions\RestoreBulkAction;
+use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -67,14 +69,46 @@ class AllCaseResource extends Resource
             ]);
     }
 
+    public static function infolist(Schema $schema): Schema
+    {
+        return $schema
+            ->components([
+                TextEntry::make('user.name')
+                    ->label('User'),
+                TextEntry::make('issue_type')
+                    ->badge(),
+                TextEntry::make('location_city')
+                    ->placeholder('-'),
+                TextEntry::make('location_state'),
+                TextEntry::make('location_country'),
+                TextEntry::make('situation_description')
+                    ->columnSpanFull(),
+                TextEntry::make('status')
+                    ->badge(),
+                TextEntry::make('resolution_type')
+                    ->badge()
+                    ->placeholder('-'),
+                TextEntry::make('resolved_at')
+                    ->dateTime()
+                    ->placeholder('-'),
+                TextEntry::make('created_at')
+                    ->dateTime()
+                    ->placeholder('-'),
+                TextEntry::make('updated_at')
+                    ->dateTime()
+                    ->placeholder('-'),
+                TextEntry::make('deleted_at')
+                    ->dateTime()
+                    ->visible(fn (AllCase $record): bool => $record->trashed()),
+            ]);
+    }
+
     public static function table(Table $table): Table
     {
         return $table
             ->columns([
-                TextColumn::make('id')
-                    ->label('ID')
-                    ->searchable(),
                 TextColumn::make('user.name')
+                    ->label('Name')
                     ->searchable(),
                 TextColumn::make('issue_type')
                     ->badge(),
@@ -108,6 +142,7 @@ class AllCaseResource extends Resource
                 TrashedFilter::make(),
             ])
             ->recordActions([
+                ViewAction::make(),
                 EditAction::make(),
                 DeleteAction::make(),
                 ForceDeleteAction::make(),
