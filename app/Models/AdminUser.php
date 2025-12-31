@@ -2,18 +2,20 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use Filament\Panel;
+use Filament\Models\Contracts\FilamentUser;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 
-class AdminUser extends Model
+class AdminUser extends Authenticatable implements FilamentUser
 {
     use HasFactory, HasUuids;
 
     protected $fillable = [
         'email',
         'password',
-        'full_name',
+        'name',
         'role',
         'is_active',
         'last_login_at',
@@ -30,6 +32,12 @@ class AdminUser extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+    public function canAccessPanel(Panel $panel): bool
+    {
+        // Define your logic here; for now, let's allow all admin_users
+        return true; 
+    }
 
     public function isSuperAdmin(): bool
     {

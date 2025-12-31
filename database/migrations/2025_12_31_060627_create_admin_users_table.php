@@ -15,7 +15,7 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->string('email')->unique();
             $table->string('password');
-            $table->string('full_name');
+            $table->string('name');
             $table->enum('role', ['super_admin', 'admin', 'support'])->default('support');
             $table->boolean('is_active')->default(true);
             $table->timestamp('last_login_at')->nullable();
