@@ -14,7 +14,7 @@ class AllCase extends Model
 {
     use HasFactory, HasUuids, SoftDeletes;
 
-    protected $table = 'cases';
+    protected $table = 'all_cases';
 
     protected $fillable = [
         'user_id',
