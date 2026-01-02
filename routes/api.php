@@ -4,6 +4,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\Api\AllCaseController;
+use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\WebhookController;
 use App\Http\Controllers\Api\ChatMessageController;
 
 Route::controller(AuthController::class)->group(function () {
@@ -23,7 +25,22 @@ Route::middleware('auth:api')->group(function () {
     // chat routes
     Route::post('/chat-messages', [ChatMessageController::class, 'store']);
     Route::get('/cases/{caseId}/messages', [ChatMessageController::class, 'index']);
+
+    // payment gateway routes
+    Route::get('/payments/gateways', [PaymentController::class, 'getAvailableGateways']);
+    
+    // Payment routes
+    Route::prefix('payments')->group(function () {
+        Route::get('/', [PaymentController::class, 'index']);
+        Route::post('/initialize', [PaymentController::class, 'initializePayment']);
+        Route::post('/{paymentId}/verify', [PaymentController::class, 'verifyPayment']);
+        Route::post('/{paymentId}/mark-received', [PaymentController::class, 'markAsReceived']);
+        Route::get('/{paymentId}', [PaymentController::class, 'show']);
+        Route::post('/{paymentId}/refund', [PaymentController::class, 'refund']);
+    });
 });
+
+Route::post('/webhooks/stripe', [WebhookController::class, 'handleStripeWebhook']);
 
 // Protected routes example
 Route::middleware('auth:api')->group(function () {
