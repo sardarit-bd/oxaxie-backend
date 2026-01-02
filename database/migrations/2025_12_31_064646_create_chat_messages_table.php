@@ -16,7 +16,7 @@ return new class extends Migration
             $table->foreignUuid('all_case_id')->constrained()->onDelete('cascade');
             $table->foreignUuid('user_id')->constrained()->onDelete('cascade');
             $table->enum('role', ['user', 'assistant', 'system']);
-            $table->text('content');
+            $table->longText('content');
             $table->string('ai_model_used', 50)->nullable();
             $table->integer('input_tokens')->nullable();
             $table->integer('output_tokens')->nullable();

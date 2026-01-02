@@ -66,6 +66,18 @@ class AllCaseController extends Controller
     }
 
     /**
+     * Get all cases for a user.
+    */
+    public function userCases()
+    {
+        return $this->successResponse(
+            auth()->user()->cases()->simplePaginate(10),
+            'User cases retrieved successfully',
+            200
+        );
+    }
+
+    /**
      * Update the specified resource in storage.
      */
     public function update(Request $request, string $id)
