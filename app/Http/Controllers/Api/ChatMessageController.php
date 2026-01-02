@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\AllCase;
 use App\Models\ChatMessage;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
@@ -61,19 +62,52 @@ class ChatMessageController extends Controller
     /**
      * Get all messages for a case
      */
-    public function index(Request $request, $caseId)
+    public function index($caseId)
     {
-        $case = $request->user()->allCases()->findOrFail($caseId);
-
-        if ($case) {
+        try {
+            $user = auth('api')->user();
+            
+            // Find the case
+            $case = AllCase::find($caseId);
+            
+            if (!$case) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Case not found',
+                    'debug' => [
+                        'case_id_searched' => $caseId
+                    ]
+                ], 404);
+            }
+            
+            // Check ownership
+            if ($case->user_id !== $user->id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Case does not belong to you',
+                    'debug' => [
+                        'authenticated_user_id' => $user->id,
+                        'case_owner_id' => $case->user_id,
+                        'ids_match' => $case->user_id === $user->id
+                    ]
+                ], 403);
+            }
+            
+            // Get messages
             $messages = ChatMessage::where('all_case_id', $caseId)
-            ->orderBy('created_at', 'asc')
-            ->get();
-
+                ->orderBy('created_at', 'asc')
+                ->get();
+            
             return response()->json([
                 'success' => true,
-                'data' => $messages,
+                'data' => $messages
             ]);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ], 500);
         }
     }
 }
