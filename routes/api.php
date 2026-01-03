@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\AllCaseController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\WebhookController;
 use App\Http\Controllers\Api\ChatMessageController;
+use App\Http\Controllers\Api\SubscriptionController;
 
 Route::controller(AuthController::class)->group(function () {
     Route::post('register', 'register');
@@ -38,6 +39,9 @@ Route::middleware('auth:api')->group(function () {
         Route::get('/{paymentId}', [PaymentController::class, 'show']);
         Route::post('/{paymentId}/refund', [PaymentController::class, 'refund']);
     });
+
+    // Subscription route
+    Route::post('/subscriptions/store-or-update', [SubscriptionController::class, 'storeOrUpdate']);
 });
 
 Route::post('/webhooks/stripe', [WebhookController::class, 'handleStripeWebhook']);
