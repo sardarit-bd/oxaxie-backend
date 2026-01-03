@@ -72,7 +72,7 @@ class StripePaymentGateway implements
     {
         try {
             $paymentIntent = $this->stripe->paymentIntents->create([
-                'amount' => $data['amount'], // Amount in cents
+                'amount' => (int) round($data['amount'] * 100),
                 'currency' => $data['currency'] ?? 'usd',
                 'description' => $data['description'] ?? null,
                 'metadata' => $data['metadata'] ?? [],

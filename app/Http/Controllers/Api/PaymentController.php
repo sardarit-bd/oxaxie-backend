@@ -167,7 +167,7 @@ class PaymentController extends Controller
         }
 
         // Check if user owns this payment
-        if ($payment->user_id !== auth('api')->id() && !auth('admin')->check()) {
+        if ($payment->user_id !== auth('api')->id()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized',

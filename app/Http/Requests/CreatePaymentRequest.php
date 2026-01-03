@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use Illuminate\Support\Facades\Log;
 use Illuminate\Foundation\Http\FormRequest;
 
 class CreatePaymentRequest extends FormRequest
@@ -22,7 +23,7 @@ class CreatePaymentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'amount' => 'required|numeric|min:0.50',
+            'amount' => 'required|numeric',
             'currency' => 'nullable|string|size:3',
             'gateway' => 'nullable|string|in:stripe',
             'description' => 'nullable|string|max:255',
