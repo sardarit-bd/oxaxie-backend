@@ -5,17 +5,15 @@ namespace App\Services\PaymentGateways;
 use App\Contracts\OnlinePaymentInterface;
 use App\Contracts\RefundablePaymentInterface;
 use App\Contracts\WebhookSupportInterface;
-use App\Contracts\RecurringPaymentInterface;
 use Stripe\StripeClient;
 use Stripe\Exception\ApiErrorException;
-use Stripe\Webhook;
 use Stripe\Exception\SignatureVerificationException;
+use Illuminate\Support\Facades\Log;
 
 class StripePaymentGateway implements 
     OnlinePaymentInterface, 
     RefundablePaymentInterface,
-    WebhookSupportInterface,
-    RecurringPaymentInterface
+    WebhookSupportInterface
 {
     protected StripeClient $stripe;
 
@@ -24,57 +22,76 @@ class StripePaymentGateway implements
         $this->stripe = new StripeClient(config('services.stripe.secret'));
     }
 
-    // Base PaymentGatewayInterface methods
-    
-    public function processPayment(array $data): array
-    {
-        // For Stripe, processing means creating and confirming a payment intent
-        $intent = $this->createPaymentIntent($data);
-        
-        if ($intent['success'] && isset($data['auto_confirm']) && $data['auto_confirm']) {
-            return $this->confirmPayment($intent['payment_intent_id']);
-        }
-        
-        return $intent;
-    }
-
-    public function getPaymentStatus(string $transactionId): array
-    {
-        return $this->retrievePaymentIntent($transactionId);
-    }
-
-    public function getGatewayName(): string
-    {
-        return 'stripe';
-    }
-
+    /**
+     * Check if gateway is available and configured
+     */
     public function isAvailable(): bool
     {
-        return !empty(config('services.stripe.secret'));
+        return !empty(config('services.stripe.secret')) && 
+               !empty(config('services.stripe.key'));
     }
 
-    // OnlinePaymentInterface methods
-    
+    /**
+     * Get gateway name
+     */
+    public function getGatewayName(): string
+    {
+        return 'Stripe';
+    }
+
+    /**
+     * Get payment status
+     */
+    public function getPaymentStatus(string $transactionId): array
+    {
+        try {
+            $paymentIntent = $this->stripe->paymentIntents->retrieve($transactionId);
+            
+            return [
+                'success' => true,
+                'status' => $paymentIntent->status,
+                'amount' => $paymentIntent->amount,
+                'currency' => $paymentIntent->currency,
+                'payment_method' => $paymentIntent->payment_method,
+                'created' => $paymentIntent->created,
+            ];
+        } catch (ApiErrorException $e) {
+            Log::error('Failed to get Stripe payment status: ' . $e->getMessage());
+            
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Create payment intent for online payment
+     */
     public function createPaymentIntent(array $data): array
     {
         try {
             $paymentIntent = $this->stripe->paymentIntents->create([
-                'amount' => $this->convertToSmallestUnit($data['amount'], $data['currency'] ?? 'usd'),
+                'amount' => $data['amount'], // Amount in cents
                 'currency' => $data['currency'] ?? 'usd',
-                'metadata' => $data['metadata'] ?? [],
                 'description' => $data['description'] ?? null,
-                'payment_method_types' => $data['payment_method_types'] ?? ['card'],
+                'metadata' => $data['metadata'] ?? [],
+                'automatic_payment_methods' => [
+                    'enabled' => true,
+                ],
             ]);
 
             return [
                 'success' => true,
                 'payment_intent_id' => $paymentIntent->id,
                 'client_secret' => $paymentIntent->client_secret,
-                'status' => $paymentIntent->status,
                 'amount' => $paymentIntent->amount,
                 'currency' => $paymentIntent->currency,
+                'status' => $paymentIntent->status,
             ];
         } catch (ApiErrorException $e) {
+            Log::error('Stripe payment intent creation failed: ' . $e->getMessage());
+            
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -82,20 +99,28 @@ class StripePaymentGateway implements
         }
     }
 
+    /**
+     * Retrieve a payment intent
+     */
     public function retrievePaymentIntent(string $paymentIntentId): array
     {
         try {
             $paymentIntent = $this->stripe->paymentIntents->retrieve($paymentIntentId);
-
+            
             return [
                 'success' => true,
                 'payment_intent_id' => $paymentIntent->id,
                 'status' => $paymentIntent->status,
                 'amount' => $paymentIntent->amount,
                 'currency' => $paymentIntent->currency,
+                'payment_method' => $paymentIntent->payment_method,
+                'client_secret' => $paymentIntent->client_secret,
                 'metadata' => $paymentIntent->metadata->toArray(),
+                'created' => $paymentIntent->created,
             ];
         } catch (ApiErrorException $e) {
+            Log::error('Failed to retrieve Stripe payment intent: ' . $e->getMessage());
+            
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -103,87 +128,170 @@ class StripePaymentGateway implements
         }
     }
 
+    /**
+     * Confirm a payment
+     */
     public function confirmPayment(string $paymentIntentId): array
     {
         try {
-            $paymentIntent = $this->stripe->paymentIntents->confirm($paymentIntentId);
-
+            // Retrieve the payment intent from Stripe
+            $paymentIntent = $this->stripe->paymentIntents->retrieve($paymentIntentId);
+            
+            // Check if payment was successful
+            if ($paymentIntent->status === 'succeeded') {
+                return [
+                    'success' => true,
+                    'status' => 'succeeded',
+                    'amount' => $paymentIntent->amount,
+                    'currency' => $paymentIntent->currency,
+                    'payment_method' => $paymentIntent->payment_method,
+                    'metadata' => $paymentIntent->metadata->toArray(),
+                    'created' => $paymentIntent->created,
+                ];
+            }
+            
+            // Handle other statuses
+            $statusMessages = [
+                'requires_payment_method' => 'Payment requires a payment method',
+                'requires_confirmation' => 'Payment requires confirmation',
+                'requires_action' => 'Payment requires additional action (e.g., 3D Secure)',
+                'processing' => 'Payment is processing',
+                'requires_capture' => 'Payment requires capture',
+                'canceled' => 'Payment was canceled',
+            ];
+            
+            $message = $statusMessages[$paymentIntent->status] ?? 'Payment not completed';
+            
             return [
-                'success' => true,
-                'payment_intent_id' => $paymentIntent->id,
+                'success' => false,
+                'error' => $message . '. Status: ' . $paymentIntent->status,
                 'status' => $paymentIntent->status,
             ];
-        } catch (ApiErrorException $e) {
-            return [
-                'success' => false,
-                'error' => $e->getMessage(),
-            ];
-        }
-    }
-
-    // RefundablePaymentInterface methods
-    
-    public function refundPayment(string $transactionId, ?float $amount = null): array
-    {
-        try {
-            $refundData = ['payment_intent' => $transactionId];
             
-            if ($amount !== null) {
-                $refundData['amount'] = $this->convertToSmallestUnit($amount, 'usd');
-            }
-
-            $refund = $this->stripe->refunds->create($refundData);
-
-            return [
-                'success' => true,
-                'refund_id' => $refund->id,
-                'status' => $refund->status,
-                'amount' => $refund->amount,
-            ];
         } catch (ApiErrorException $e) {
+            Log::error('Stripe payment confirmation failed: ' . $e->getMessage(), [
+                'payment_intent_id' => $paymentIntentId,
+            ]);
+            
             return [
                 'success' => false,
-                'error' => $e->getMessage(),
+                'error' => 'Payment confirmation failed: ' . $e->getMessage(),
             ];
         }
     }
 
+    /**
+     * Verify payment status
+     */
+    public function verifyPayment(string $paymentIntentId, ?array $additionalData = null): array
+    {
+        return $this->confirmPayment($paymentIntentId);
+    }
+
+    /**
+     * Check if payment can be refunded
+     */
     public function canRefund(string $transactionId): bool
     {
         try {
             $paymentIntent = $this->stripe->paymentIntents->retrieve($transactionId);
-            return $paymentIntent->status === 'succeeded';
+            return $paymentIntent->status === 'succeeded' && 
+                   $paymentIntent->amount > 0;
         } catch (ApiErrorException $e) {
+            Log::error('Error checking refund eligibility: ' . $e->getMessage());
             return false;
         }
     }
 
-    // WebhookSupportInterface methods
-    
+    /**
+     * Refund a payment
+     */
+    public function refundPayment(string $transactionId, ?float $amount = null): array
+    {
+        try {
+            $refundData = ['payment_intent' => $transactionId];
+
+            if ($amount !== null) {
+                $refundData['amount'] = (int)($amount * 100);
+            }
+            
+            $refund = $this->stripe->refunds->create($refundData);
+            
+            return [
+                'success' => true,
+                'refund_id' => $refund->id,
+                'amount' => $refund->amount,
+                'currency' => $refund->currency,
+                'status' => $refund->status,
+                'reason' => $refund->reason,
+            ];
+        } catch (ApiErrorException $e) {
+            Log::error('Stripe refund failed: ' . $e->getMessage());
+            
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Verify webhook signature
+     */
     public function verifyWebhookSignature(string $payload, string $signature): bool
     {
         try {
-            Webhook::constructEvent(
+            $webhookSecret = config('services.stripe.webhook_secret');
+            
+            if (empty($webhookSecret)) {
+                Log::warning('Stripe webhook secret not configured');
+                return false;
+            }
+
+            \Stripe\Webhook::constructEvent(
                 $payload,
                 $signature,
-                config('services.stripe.webhook_secret')
+                $webhookSecret
             );
+            
             return true;
         } catch (SignatureVerificationException $e) {
+            Log::error('Stripe webhook signature verification failed: ' . $e->getMessage());
             return false;
         }
     }
 
-    public function parseWebhookPayload(string $payload): array
+    /**
+     * Handle webhook payload
+     */
+    public function handleWebhook(array $payload): array
     {
         try {
-            $event = json_decode($payload, true);
-            return [
-                'success' => true,
-                'event_type' => $event['type'] ?? null,
-                'data' => $event['data']['object'] ?? [],
-            ];
+            $eventType = $payload['type'] ?? null;
+            
+            if (!$eventType) {
+                return [
+                    'success' => false,
+                    'error' => 'No event type found in webhook payload',
+                ];
+            }
+
+            Log::info('Stripe webhook received', ['event' => $eventType]);
+
+            // Handle different event types
+            return match($eventType) {
+                'payment_intent.succeeded' => $this->handlePaymentIntentSucceeded($payload['data']['object']),
+                'payment_intent.payment_failed' => $this->handlePaymentIntentFailed($payload['data']['object']),
+                'charge.refunded' => $this->handleChargeRefunded($payload['data']['object']),
+                default => [
+                    'success' => true,
+                    'event_type' => $eventType,
+                    'message' => 'Event acknowledged but not processed',
+                ]
+            };
         } catch (\Exception $e) {
+            Log::error('Stripe webhook handling failed: ' . $e->getMessage());
+            
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -191,77 +299,44 @@ class StripePaymentGateway implements
         }
     }
 
-    // RecurringPaymentInterface methods
-    
-    public function createSubscription(array $data): array
+    /**
+     * Handle payment intent succeeded event
+     */
+    protected function handlePaymentIntentSucceeded(array $paymentIntent): array
     {
-        try {
-            $subscription = $this->stripe->subscriptions->create([
-                'customer' => $data['customer_id'],
-                'items' => $data['items'],
-                'metadata' => $data['metadata'] ?? [],
-            ]);
-
-            return [
-                'success' => true,
-                'subscription_id' => $subscription->id,
-                'status' => $subscription->status,
-            ];
-        } catch (ApiErrorException $e) {
-            return [
-                'success' => false,
-                'error' => $e->getMessage(),
-            ];
-        }
+        return [
+            'success' => true,
+            'event_type' => 'payment_intent.succeeded',
+            'payment_intent_id' => $paymentIntent['id'],
+            'amount' => $paymentIntent['amount'],
+            'currency' => $paymentIntent['currency'],
+        ];
     }
 
-    public function cancelSubscription(string $subscriptionId): array
+    /**
+     * Handle payment intent failed event
+     */
+    protected function handlePaymentIntentFailed(array $paymentIntent): array
     {
-        try {
-            $subscription = $this->stripe->subscriptions->cancel($subscriptionId);
-
-            return [
-                'success' => true,
-                'subscription_id' => $subscription->id,
-                'status' => $subscription->status,
-            ];
-        } catch (ApiErrorException $e) {
-            return [
-                'success' => false,
-                'error' => $e->getMessage(),
-            ];
-        }
+        return [
+            'success' => true,
+            'event_type' => 'payment_intent.payment_failed',
+            'payment_intent_id' => $paymentIntent['id'],
+            'error' => $paymentIntent['last_payment_error']['message'] ?? 'Unknown error',
+        ];
     }
 
-    public function getSubscription(string $subscriptionId): array
+    /**
+     * Handle charge refunded event
+     */
+    protected function handleChargeRefunded(array $charge): array
     {
-        try {
-            $subscription = $this->stripe->subscriptions->retrieve($subscriptionId);
-
-            return [
-                'success' => true,
-                'subscription_id' => $subscription->id,
-                'status' => $subscription->status,
-                'current_period_end' => $subscription->current_period_end,
-            ];
-        } catch (ApiErrorException $e) {
-            return [
-                'success' => false,
-                'error' => $e->getMessage(),
-            ];
-        }
-    }
-
-    // Helper methods
-    
-    protected function convertToSmallestUnit(float $amount, string $currency): int
-    {
-        $zeroDecimalCurrencies = ['jpy', 'krw', 'vnd', 'clp'];
-        
-        if (in_array(strtolower($currency), $zeroDecimalCurrencies)) {
-            return (int) $amount;
-        }
-
-        return (int) ($amount * 100);
+        return [
+            'success' => true,
+            'event_type' => 'charge.refunded',
+            'charge_id' => $charge['id'],
+            'amount_refunded' => $charge['amount_refunded'],
+            'currency' => $charge['currency'],
+        ];
     }
 }

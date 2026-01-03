@@ -77,13 +77,39 @@ class PaymentController extends Controller
     }
 
     /**
-     * Verify manual payment (for cash, bank transfer, etc.)
+     * Verify payment (handles both online and manual payments)
      */
     public function verifyPayment(VerifyPaymentRequest $request, int $paymentId): JsonResponse
     {
         $verificationData = $request->validated();
+        
+        // Get payment to determine type
+        $payment = $this->paymentService->getPaymentDetails($paymentId);
+        
+        if (!$payment) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Payment not found',
+            ], 404);
+        }
 
-        $result = $this->paymentService->verifyManualPayment($paymentId, $verificationData);
+        // Check authorization
+        if ($payment->user_id !== $request->user()->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized',
+            ], 403);
+        }
+
+        // Determine if online or manual payment
+        $isOnlinePayment = isset($verificationData['payment_intent_id']) || 
+                        !empty($payment->payment_intent_id);
+
+        if ($isOnlinePayment) {
+            $result = $this->paymentService->verifyOnlinePayment($paymentId, $verificationData);
+        } else {
+            $result = $this->paymentService->verifyManualPayment($paymentId, $verificationData);
+        }
 
         if ($result['success']) {
             return response()->json([
@@ -103,7 +129,7 @@ class PaymentController extends Controller
     }
 
     /**
-     * Mark payment as received (for manual payments)
+     * Mark payment as received (for manual payments only)
      */
     public function markAsReceived(int $paymentId): JsonResponse
     {
@@ -141,7 +167,7 @@ class PaymentController extends Controller
         }
 
         // Check if user owns this payment
-        if ($payment->user_id !== auth('api')->id() && !auth('admin')->id()) {
+        if ($payment->user_id !== auth('api')->id() && !auth('admin')->check()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized',

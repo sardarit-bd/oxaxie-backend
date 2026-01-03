@@ -2,12 +2,13 @@
 
 namespace App\Services;
 
-use App\Contracts\PaymentGatewayInterface;
-use App\Contracts\OnlinePaymentInterface;
-use App\Contracts\ManualPaymentInterface;
-use App\Contracts\RefundablePaymentInterface;
-use App\Factories\PaymentGatewayFactory;
 use InvalidArgumentException;
+use Illuminate\Support\Facades\Log;
+use App\Factories\PaymentGatewayFactory;
+use App\Contracts\ManualPaymentInterface;
+use App\Contracts\OnlinePaymentInterface;
+use App\Contracts\PaymentGatewayInterface;
+use App\Contracts\RefundablePaymentInterface;
 
 /**
  * Strategy pattern to handle different payment types
@@ -74,6 +75,49 @@ class PaymentStrategyService
                 'success', 'transaction_id', 'amount', 'currency', 'status'
             ])),
         ];
+    }
+
+    /**
+     * Verify online payment (Stripe, PayPal, etc.)
+     * Uses confirmPayment method from OnlinePaymentInterface
+     */
+    public function verifyOnlinePayment(string $gateway, string $paymentIntentId): array
+    {
+        try {
+            $gatewayInstance = PaymentGatewayFactory::create($gateway);
+            
+            // Check if gateway supports online payments
+            if (!$gatewayInstance instanceof OnlinePaymentInterface) {
+                return [
+                    'success' => false,
+                    'error' => "Gateway [{$gateway}] does not support online payment verification",
+                ];
+            }
+            
+            // Call the gateway's confirmPayment method (which verifies the payment status)
+            $result = $gatewayInstance->confirmPayment($paymentIntentId);
+            
+            return $result;
+            
+        } catch (InvalidArgumentException $e) {
+            Log::error("Gateway error during verification: {$e->getMessage()}");
+            
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+            ];
+        } catch (\Exception $e) {
+            Log::error("Online payment verification failed: {$e->getMessage()}", [
+                'gateway' => $gateway,
+                'payment_intent_id' => $paymentIntentId,
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            return [
+                'success' => false,
+                'error' => 'Payment verification failed: ' . $e->getMessage(),
+            ];
+        }
     }
 
     /**

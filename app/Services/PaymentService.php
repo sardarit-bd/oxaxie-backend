@@ -2,10 +2,11 @@
 
 namespace App\Services;
 
-use App\Repositories\PaymentRepository;
-use App\Services\PaymentStrategyService;
-use App\Factories\PaymentGatewayFactory;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
+use App\Repositories\PaymentRepository;
+use App\Factories\PaymentGatewayFactory;
+use App\Services\PaymentStrategyService;
 
 class PaymentService
 {
@@ -22,7 +23,6 @@ class PaymentService
     {
         $gateway = $data['gateway'] ?? 'stripe';
 
-        // Determine payment type based on gateway capabilities
         if ($this->strategyService->supportsOnlinePayment($gateway)) {
             return $this->initializeOnlinePayment($data);
         } elseif ($this->strategyService->supportsManualPayment($gateway)) {
@@ -52,7 +52,6 @@ class PaymentService
         $result = $this->strategyService->processOnlinePayment($gateway, $paymentData);
 
         if ($result['success']) {
-            // Create payment record in database
             $payment = $this->paymentRepository->create([
                 'user_id' => $data['user_id'],
                 'payment_gateway' => $gateway,
@@ -95,7 +94,6 @@ class PaymentService
         $result = $this->strategyService->processManualPayment($gateway, $paymentData);
 
         if ($result['success']) {
-            // Create payment record in database
             $payment = $this->paymentRepository->create([
                 'user_id' => $data['user_id'],
                 'payment_gateway' => $gateway,
@@ -115,6 +113,48 @@ class PaymentService
                 'payment' => $payment,
                 'type' => 'manual',
                 'additional_data' => $result['additional_data'] ?? [],
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Verify online payment (Stripe, PayPal, etc.)
+     */
+    public function verifyOnlinePayment(int $paymentId, array $verificationData): array
+    {
+        $payment = $this->paymentRepository->findById($paymentId);
+
+        if (!$payment) {
+            return [
+                'success' => false,
+                'error' => 'Payment not found',
+            ];
+        }
+
+        // Verify using the strategy service
+        $result = $this->strategyService->verifyOnlinePayment(
+            $payment->payment_gateway,
+            $verificationData['payment_intent_id'] ?? $payment->payment_intent_id
+        );
+
+        if ($result['success']) {
+            $this->paymentRepository->update($payment, [
+                'status' => 'succeeded',
+                'paid_at' => now(),
+                'metadata' => array_merge($payment->metadata ?? [], [
+                    'verified_at' => now()->toISOString(),
+                    'payment_intent_status' => $result['status'] ?? 'succeeded',
+                ]),
+            ]);
+
+        
+            $this->activateUserSubscription($payment);
+
+            return [
+                'success' => true,
+                'payment' => $payment->fresh(),
             ];
         }
 
@@ -197,6 +237,29 @@ class PaymentService
             'success' => false,
             'error' => 'Gateway does not support manual payment marking',
         ];
+    }
+
+    /**
+     * Activate user subscription after successful payment
+     */
+    protected function activateUserSubscription($payment): void
+    {
+        // Get subscription plan ID from metadata
+        $subscriptionPlanId = $payment->metadata['subscription_plan_id'] ?? null;
+
+        if ($subscriptionPlanId) {
+            // TODO: Implement subscription activation logic
+            // Example:
+            // $user = User::find($payment->user_id);
+            // $user->subscriptions()->create([
+            //     'plan_id' => $subscriptionPlanId,
+            //     'status' => 'active',
+            //     'starts_at' => now(),
+            //     'ends_at' => now()->addMonth(),
+            // ]);
+
+            Log::info('Subscription activated for payment: ' . $payment->id);
+        }
     }
 
     /**

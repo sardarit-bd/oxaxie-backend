@@ -2,13 +2,12 @@
 
 namespace App\Contracts;
 
+/**
+ * Base Payment Gateway Interface
+ * All payment gateways must implement this
+ */
 interface PaymentGatewayInterface
 {
-    /**
-     * Process a payment
-     */
-    public function processPayment(array $data): array;
-
     /**
      * Get payment status
      */

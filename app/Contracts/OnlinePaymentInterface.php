@@ -18,4 +18,9 @@ interface OnlinePaymentInterface extends PaymentGatewayInterface
      * Confirm a payment
      */
     public function confirmPayment(string $paymentIntentId): array;
+
+    /**
+     * Verify payment status
+     */
+    public function verifyPayment(string $paymentIntentId, ?array $additionalData = null): array;
 }
