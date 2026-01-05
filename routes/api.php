@@ -26,7 +26,8 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/case/user/all-cases', [AllCaseController::class, 'userCases']);
 
     // chat routes
-    Route::post('/chat-messages', [ChatMessageController::class, 'store']);
+    Route::post('/chat/send', [ChatMessageController::class, 'sendMessage']);
+    // Route::post('/chat-messages', [ChatMessageController::class, 'store']);
     Route::get('/cases/{caseId}/messages', [ChatMessageController::class, 'index']);
 
     // payment gateway routes
