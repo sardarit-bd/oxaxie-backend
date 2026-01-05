@@ -11,7 +11,7 @@ class UsageTracking extends Model
 {
     use HasFactory, HasUuids;
 
-    protected $table = 'usage_tracking';
+    protected $table = 'usage_trackings';
 
     protected $fillable = [
         'user_id',

@@ -19,8 +19,8 @@ return new class extends Migration
             $table->decimal('credits_added', 10, 4);
             $table->enum('status', ['pending', 'completed', 'failed', 'refunded'])->default('pending');
             $table->string('stripe_payment_intent_id')->nullable();
-            $table->timestamp('expires_at');
-            $table->timestamp('applied_at')->nullable();
+            $table->dateTime('expires_at');
+            $table->dateTime('applied_at')->nullable();
             $table->timestamps();
             
             $table->index(['user_id', 'status']);

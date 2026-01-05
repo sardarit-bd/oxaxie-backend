@@ -12,8 +12,17 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('system_settings', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
+            $table->string('setting_key', 100)->unique();
+            $table->string('setting_group', 50);
+            $table->text('setting_value');
+            $table->string('data_type', 20);
+            $table->text('description')->nullable();
+            $table->boolean('is_public')->default(false);
             $table->timestamps();
+            
+            $table->index('setting_key');
+            $table->index('setting_group');
         });
     }
 

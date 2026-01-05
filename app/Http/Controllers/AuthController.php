@@ -4,18 +4,20 @@ namespace App\Http\Controllers;
 
 use App\Http\Resources\RegisterUserResource;
 use App\Models\User;
+use App\Services\UserSetupService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Exception;
 
 class AuthController extends Controller
 {
     use ApiResponse;
-    // public function __construct()
-    // {
-    //     $this->middleware('auth:api', ['except' => ['login', 'register']]);
-    // }
+
+    public function __construct(
+        protected UserSetupService $userSetupService
+    ) {}
 
     public function register(Request $request)
     {
@@ -33,15 +35,44 @@ class AuthController extends Controller
             );
         }
 
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-        ]);
+        try {
+            // Create user
+            $user = User::create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+            ]);
 
-        $token = auth()->login($user);
+            // Setup user account (subscription, credits, usage tracking)
+            $setupData = $this->userSetupService->setupNewUser($user);
 
-        return $this->authResponse(new RegisterUserResource($user), $token, 'Successfully registered');
+            // Generate auth token
+            $token = auth()->login($user);
+
+            // Return response with setup data
+            return response()->json([
+                'success' => true,
+                'message' => 'Successfully registered',
+                'data' => [
+                    'user' => new RegisterUserResource($user),
+                    'authorization' => [
+                        'token' => $token,
+                        'type' => 'bearer',
+                    ],
+                    'setup' => [
+                        'subscription' => $setupData['subscription'],
+                        'initial_credits' => $setupData['credit_purchase']->credits_added,
+                        'usage_tracking_initialized' => true,
+                    ]
+                ]
+            ], 201);
+
+        } catch (Exception $e) {
+            return $this->errorResponse(
+                'Registration failed: ' . $e->getMessage(),
+                500
+            );
+        }
     }
 
     public function login(Request $request)

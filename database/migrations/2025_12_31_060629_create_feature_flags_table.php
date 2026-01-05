@@ -12,8 +12,18 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('feature_flags', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
+            $table->string('flag_key', 100)->unique();
+            $table->string('flag_name');
+            $table->text('description')->nullable();
+            $table->boolean('is_enabled')->default(false);
+            $table->json('enabled_for_users')->nullable();
+            $table->json('enabled_for_plans')->nullable();
+            $table->integer('rollout_percentage')->default(0);
             $table->timestamps();
+            
+            $table->index('flag_key');
+            $table->index('is_enabled');
         });
     }
 

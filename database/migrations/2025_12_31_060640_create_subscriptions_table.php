@@ -17,9 +17,11 @@ return new class extends Migration
             $table->enum('plan_tier', ['free', 'pro', 'pro_plus'])->default('free');
             $table->enum('status', ['active', 'cancelled', 'expired', 'past_due'])->default('active');
             $table->decimal('monthly_price', 8, 2)->default(0.00);
-            $table->timestamp('current_period_start')->nullable();
-            $table->timestamp('current_period_end')->nullable();
-            $table->timestamp('cancelled_at')->nullable();
+
+            $table->dateTime('current_period_start')->nullable();
+            $table->dateTime('current_period_end')->nullable();
+            $table->dateTime('cancelled_at')->nullable();
+
             $table->string('stripe_subscription_id')->nullable()->unique();
             $table->string('stripe_customer_id')->nullable();
             $table->timestamps();

@@ -8,6 +8,8 @@ use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\WebhookController;
 use App\Http\Controllers\Api\ChatMessageController;
 use App\Http\Controllers\Api\SubscriptionController;
+use App\Http\Controllers\Api\UsageTrackingController;
+use App\Http\Controllers\Api\CreditPurchaseController;
 
 Route::controller(AuthController::class)->group(function () {
     Route::post('register', 'register');
@@ -40,8 +42,68 @@ Route::middleware('auth:api')->group(function () {
         Route::post('/{paymentId}/refund', [PaymentController::class, 'refund']);
     });
 
-    // Subscription route
-    Route::post('/subscriptions/store-or-update', [SubscriptionController::class, 'storeOrUpdate']);
+    // ============================================
+    // SUBSCRIPTION ROUTES
+    // One record per user - updates on plan changes
+    // ============================================
+    Route::prefix('subscriptions')->group(function () {
+        // Store or update subscription (main endpoint)
+        Route::post('/store-or-update', [SubscriptionController::class, 'storeOrUpdate']);
+        
+        // View subscription
+        Route::get('/', [SubscriptionController::class, 'show']);
+        Route::get('/active', [SubscriptionController::class, 'active']);
+        Route::get('/has-active', [SubscriptionController::class, 'hasActive']);
+        
+        // Update subscription
+        Route::put('/', [SubscriptionController::class, 'update']);
+        Route::patch('/', [SubscriptionController::class, 'update']);
+        
+        // Cancel subscription
+        Route::post('/cancel', [SubscriptionController::class, 'cancel']);
+        
+        // Delete subscription
+        Route::delete('/', [SubscriptionController::class, 'destroy']);
+    });
+
+    // ============================================
+    // CREDIT PURCHASE ROUTES
+    // Multiple records per user - immutable transactions
+    // ============================================
+    Route::prefix('credit-purchases')->group(function () {
+        // Create new purchase (always creates new record)
+        Route::post('/', [CreditPurchaseController::class, 'store']);
+        
+        // Update only status (amounts are immutable)
+        Route::patch('/{id}/status', [CreditPurchaseController::class, 'updateStatus']);
+        
+        // View purchases
+        Route::get('/', [CreditPurchaseController::class, 'index']);
+        Route::get('/{id}', [CreditPurchaseController::class, 'show']);
+        Route::get('/history/all', [CreditPurchaseController::class, 'history']);
+        Route::get('/credits/available', [CreditPurchaseController::class, 'availableCredits']);
+    });
+
+    // ============================================
+    // USAGE TRACKING ROUTES
+    // One record per user per billing cycle - updates throughout cycle
+    // ============================================
+    Route::prefix('usage')->group(function () {
+        // Record/update usage (upsert pattern)
+        Route::post('/record', [UsageTrackingController::class, 'recordUsage']);
+        
+        // Increment usage (for real-time tracking)
+        Route::post('/increment', [UsageTrackingController::class, 'incrementUsage']);
+        
+        // View usage
+        Route::get('/current', [UsageTrackingController::class, 'getCurrentUsage']);
+        Route::get('/history', [UsageTrackingController::class, 'getUsageHistory']);
+        Route::get('/summary', [UsageTrackingController::class, 'getUsageSummary']);
+        Route::get('/{id}', [UsageTrackingController::class, 'show']);
+        
+        // Threshold management
+        Route::post('/check-threshold', [UsageTrackingController::class, 'checkCostThreshold']);
+    });
 });
 
 Route::post('/webhooks/stripe', [WebhookController::class, 'handleStripeWebhook']);
