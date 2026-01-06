@@ -12,7 +12,7 @@ class CaseComparisonChart extends ChartWidget
     protected static ?int $sort = 2;
     protected ?string $pollingInterval = '60s';
     protected static ?string $aspectRatio = null;
-    protected ?string $heading = 'Case Comparison Chart (Created VS Resolved)';
+    protected ?string $heading = 'Case Comparison (Created VS Resolved)';
 
     protected function getHeight(): string
     {

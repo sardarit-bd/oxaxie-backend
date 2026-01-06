@@ -65,9 +65,20 @@ class UserResource extends Resource
                     ->searchable(),
                 TextColumn::make('account_status')
                     ->badge(),
-                TextColumn::make('email_verified_at')
-                    ->dateTime()
-                    ->sortable(),
+                TextColumn::make('subscriptions.plan_tier')
+                    ->label('Plan tier')
+                    ->sortable()
+                    ->formatStateUsing(function ($state) {
+                        return match ($state) {
+                            'free' => 'Free',
+                            'pro' => 'Pro',
+                            'pro_plus' => 'Pro Plus',
+                            default => ucfirst(str_replace('_', ' ', $state)),
+                        };
+                    }),
+                // TextColumn::make('email_verified_at')
+                //     ->dateTime()
+                //     ->sortable(),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()

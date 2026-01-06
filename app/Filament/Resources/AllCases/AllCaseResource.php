@@ -113,16 +113,21 @@ class AllCaseResource extends Resource
                 TextColumn::make('issue_type')
                     ->badge(),
                 TextColumn::make('location_city')
+                    ->label('City')
                     ->searchable(),
                 TextColumn::make('location_state')
+                    ->label('State')
                     ->searchable(),
                 TextColumn::make('location_country')
+                    ->label('Country')
                     ->searchable(),
                 TextColumn::make('status')
                     ->badge(),
-                TextColumn::make('resolution_type')
-                    ->badge(),
+                // TextColumn::make('resolution_type')
+                //     ->label('Resolution Type')
+                //     ->badge(),
                 TextColumn::make('resolved_at')
+                    ->label('Resolved At')
                     ->dateTime()
                     ->sortable(),
                 TextColumn::make('created_at')
