@@ -6,6 +6,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\Api\AllCaseController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\WebhookController;
+use App\Http\Controllers\Api\DocumentController;
 use App\Http\Controllers\Api\ChatMessageController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\UsageTrackingController;
@@ -105,6 +106,15 @@ Route::middleware('auth:api')->group(function () {
         // Threshold management
         Route::post('/check-threshold', [UsageTrackingController::class, 'checkCostThreshold']);
     });
+
+
+
+    // Document routes
+    Route::post('/documents/generate', [DocumentController::class, 'generate']);
+    Route::get('/cases/{caseId}/documents', [DocumentController::class, 'index']);
+    Route::get('/documents/{documentId}', [DocumentController::class, 'show']);
+    Route::get('/documents/{documentId}/download', [DocumentController::class, 'download']);
+    Route::delete('/documents/{documentId}', [DocumentController::class, 'destroy']);
 });
 
 Route::post('/webhooks/stripe', [WebhookController::class, 'handleStripeWebhook']);
