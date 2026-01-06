@@ -46,7 +46,7 @@ class ChatMessageController extends Controller
         $userMessage = $validated['message'];
 
         try {
-            // 1. Verify case ownership
+   
             $case = AllCase::where('id', $caseId)
                 ->where('user_id', $user->id)
                 ->first();
@@ -55,7 +55,6 @@ class ChatMessageController extends Controller
                 return $this->errorResponse('Case not found or access denied', 404);
             }
 
-            // 2. Check subscription limits BEFORE processing
             $limitCheck = $this->limitService->canSendMessage($user->id);
             
             if (!$limitCheck['allowed']) {
@@ -76,12 +75,12 @@ class ChatMessageController extends Controller
                 );
             }
 
-            // 3. Get user's subscription and determine AI model
+          
             $subscription = $this->subscriptionRepository->getActiveByUserId($user->id);
             $planTier = $subscription->plan_tier ?? 'free';
             $aiModel = $this->costCalculator->getModelForPlan($planTier);
 
-            // 4. Get conversation history
+          
             $conversationHistory = ChatMessage::where('all_case_id', $caseId)
                 ->orderBy('created_at', 'asc')
                 ->get()
@@ -91,7 +90,7 @@ class ChatMessageController extends Controller
                 ])
                 ->toArray();
 
-            // 5. Build system prompt
+         
             $systemPrompt = $this->aiChatService->buildSystemPrompt([
                 'issue_type' => $case->issue_type,
                 'location_city' => $case->location_city,
@@ -100,11 +99,11 @@ class ChatMessageController extends Controller
                 'situation_description' => $case->situation_description,
             ]);
 
-            // 6. Use database transaction for atomicity
+          
             DB::beginTransaction();
 
             try {
-                // 7. Save user message FIRST
+             
                 $userChatMessage = ChatMessage::create([
                     'id' => Str::uuid(),
                     'all_case_id' => $caseId,
@@ -116,7 +115,6 @@ class ChatMessageController extends Controller
                     ],
                 ]);
 
-                // 8. Call AI to generate response
                 $aiResponse = $this->aiChatService->generateResponse(
                     $aiModel,
                     $systemPrompt,
@@ -124,14 +122,14 @@ class ChatMessageController extends Controller
                     $userMessage
                 );
 
-                // 9. Calculate cost
+               
                 $cost = $this->costCalculator->calculateCost(
                     $aiModel,
                     $aiResponse['input_tokens'],
                     $aiResponse['output_tokens']
                 );
 
-                // 10. Save AI response
+               
                 $aiChatMessage = ChatMessage::create([
                     'id' => Str::uuid(),
                     'all_case_id' => $caseId,
@@ -147,18 +145,18 @@ class ChatMessageController extends Controller
                     ],
                 ]);
 
-                // 11. Update usage tracking (increment chat count + tokens + cost)
+                
                 $today = Carbon::today()->toDateString();
                 
                 $this->usageTrackingService->incrementUsage($user->id, [
                     'billing_cycle_date' => $today,
-                    'messages_used' => 1, // Count only successful exchanges
+                    'messages_used' => 1,
                     'input_tokens_used' => $aiResponse['input_tokens'],
                     'output_tokens_used' => $aiResponse['output_tokens'],
                     'ai_cost_accumulated' => $cost,
                 ]);
 
-                // 12. Check if threshold reached and update
+                
                 $threshold = $this->costCalculator->getThreshold($planTier);
                 if ($threshold > 0) {
                     $this->usageTrackingService->checkCostThreshold(
@@ -170,10 +168,10 @@ class ChatMessageController extends Controller
 
                 DB::commit();
 
-                // 13. Get usage warning if approaching limits
+                
                 $usageWarning = $this->limitService->getUsageWarning($user->id);
 
-                // 14. Return successful response
+                
                 return $this->successResponse([
                     'user_message' => $userChatMessage,
                     'ai_message' => $aiChatMessage,
@@ -195,8 +193,7 @@ class ChatMessageController extends Controller
                     'trace' => $e->getTraceAsString()
                 ]);
 
-                // Note: User message was saved but AI response failed
-                // We do NOT increment usage count since the exchange was not successful
+
                 return $this->errorResponse(
                     'Failed to generate AI response. Please try again.',
                     500,

@@ -70,8 +70,8 @@ class AiCostCalculatorService
     {
         return match ($planTier) {
             'free' => 'gemini-2.5-flash',
-            'pro' => 'claude-sonnet-4-20250514',
-            'pro_plus' => 'claude-opus-4-20250514',
+            'pro' => 'gemini-2.5-flash',
+            'pro_plus' => 'gemini-2.5-flash',
             default => 'gemini-2.5-flash',
         };
     }
