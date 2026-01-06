@@ -29,38 +29,40 @@ class AiCostCalculatorService
 
     /**
      * Cost thresholds per plan tier (in USD)
+     * For free tier: Using message count limit instead of cost threshold
      */
     private const THRESHOLDS = [
-        'free' => 0.00,
-        'pro' => 5.00,
-        'pro_plus' => 19.00,
+        'free' => 0.00,      // Free tier uses message count limits, not cost
+        'pro' => 5.00,       // $5 monthly AI cost limit
+        'pro_plus' => 19.00, // $19 monthly AI cost limit
     ];
 
     /**
-     * Chat limits per plan tier
+     * Chat message limits per plan tier (per billing cycle/month)
+     * This is the PRIMARY limit for free tier since Gemini is free
      */
     private const CHAT_LIMITS = [
-        'free' => 10,
-        'pro' => null,
-        'pro_plus' => null,
+        'free' => 50,        // 50 messages per month - reasonable for testing/light use
+        'pro' => null,       // Unlimited messages until $5 cost threshold
+        'pro_plus' => null,  // Unlimited messages until $19 cost threshold
     ];
 
     /**
      * Case limits per plan tier per month
      */
     private const CASE_LIMITS = [
-        'free' => 0,
-        'pro' => 3,  
-        'pro_plus' => null, 
+        'free' => 2,         // 2 cases per month for free users
+        'pro' => 10,         // 10 cases per month for pro users  
+        'pro_plus' => null,  // Unlimited cases for pro_plus
     ];
 
     /**
      * Document limits per plan tier
      */
     private const DOCUMENT_LIMITS = [
-        'free' => 1,      
-        'pro' => null,      
-        'pro_plus' => null,  
+        'free' => 3,         // 3 documents total for free users      
+        'pro' => null,       // Unlimited for pro (until cost threshold)      
+        'pro_plus' => null,  // Unlimited for pro_plus (until cost threshold)
     ];
 
     /**
@@ -121,7 +123,7 @@ class AiCostCalculatorService
     {
         $threshold = $this->getThreshold($planTier);
         
-        // Free tier has no cost threshold
+        // Free tier has no cost threshold (uses message count limit instead)
         if ($planTier === 'free') {
             return false;
         }
