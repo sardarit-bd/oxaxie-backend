@@ -2,211 +2,157 @@
 
 namespace App\Services;
 
-/**
- * AI Cost Calculator Service
- * Calculates token costs based on AI model and plan tier
- */
+use Exception;
+
 class AiCostCalculatorService
 {
-    /**
-     * Model pricing per million tokens (in USD)
-     * Source: Official pricing as of January 2025
-     */
-    private const PRICING = [
-        'gemini-2.5-flash' => [
-            'input' => 0.00,
-            'output' => 0.00, 
-        ],
-        'claude-sonnet-4-20250514' => [
-            'input' => 3.00,
-            'output' => 15.00,
-        ],
-        'claude-opus-4-20250514' => [
-            'input' => 15.00,
-            'output' => 75.00,
-        ],
+    // Model pricing per 1M tokens (input/output)
+    private const MODEL_COSTS = [
+        // Gemini models
+        'gemini-1.5-flash' => ['input' => 0.075, 'output' => 0.30],
+        'gemini-1.5-pro' => ['input' => 1.25, 'output' => 5.00],
+        'gemini-2.0-flash-exp' => ['input' => 0.00, 'output' => 0.00],
+        
+        // Claude models
+        'claude-3-5-sonnet-20241022' => ['input' => 3.00, 'output' => 15.00],
+        'claude-3-5-haiku-20241022' => ['input' => 0.80, 'output' => 4.00],
+        'claude-3-opus-20240229' => ['input' => 15.00, 'output' => 75.00],
     ];
 
-    /**
-     * Cost thresholds per plan tier (in USD)
-     * For free tier: Using message count limit instead of cost threshold
-     */
-    private const THRESHOLDS = [
-        'free' => 0.00,      // Free tier uses message count limits, not cost
-        'pro' => 5.00,       // $5 monthly AI cost limit
-        'pro_plus' => 19.00, // $19 monthly AI cost limit
-    ];
-
-    /**
-     * Chat message limits per plan tier (per billing cycle/month)
-     * This is the PRIMARY limit for free tier since Gemini is free
-     */
+    // Chat limits per plan
     private const CHAT_LIMITS = [
-        'free' => 50,        // 50 messages per month - reasonable for testing/light use
-        'pro' => null,       // Unlimited messages until $5 cost threshold
-        'pro_plus' => null,  // Unlimited messages until $19 cost threshold
+        'free' => 0,          
+        'pro' => 100,          
+        'pro_plus' => 500,     
+        'enterprise' => -1,    
     ];
 
     /**
-     * Case limits per plan tier per month
+     * Get chat message limit for a plan
      */
-    private const CASE_LIMITS = [
-        'free' => 2,         // 2 cases per month for free users
-        'pro' => 10,         // 10 cases per month for pro users  
-        'pro_plus' => null,  // Unlimited cases for pro_plus
-    ];
+    public function getChatLimit(string $planTier): int
+    {
+        return self::CHAT_LIMITS[$planTier] ?? 0;
+    }
 
     /**
-     * Document limits per plan tier
-     */
-    private const DOCUMENT_LIMITS = [
-        'free' => 3,         // 3 documents total for free users      
-        'pro' => null,       // Unlimited for pro (until cost threshold)      
-        'pro_plus' => null,  // Unlimited for pro_plus (until cost threshold)
-    ];
-
-    /**
-     * Get AI model based on plan tier
+     * Get the appropriate model for a plan tier
      */
     public function getModelForPlan(string $planTier): string
     {
+        $provider = config('services.ai.default_provider', 'gemini');
+        
+   
+        if ($provider === 'gemini' && config('services.gemini.model')) {
+            return config('services.gemini.model');
+        }
+        
+        if ($provider === 'anthropic' && config('services.anthropic.model')) {
+            return config('services.anthropic.model');
+        }
+  
+        if ($provider === 'anthropic') {
+            return match ($planTier) {
+                'free' => 'claude-3-5-haiku-20241022',
+                'pro' => 'claude-3-5-sonnet-20241022',
+                'pro_plus' => 'claude-3-5-sonnet-20241022',
+                'enterprise' => 'claude-3-opus-20240229',
+                default => 'claude-3-5-sonnet-20241022',
+            };
+        }
+        
+
         return match ($planTier) {
-            'free' => 'gemini-2.5-flash',
-            'pro' => 'gemini-2.5-flash',
-            'pro_plus' => 'gemini-2.5-flash',
-            default => 'gemini-2.5-flash',
+            'free' => 'gemini-1.5-flash',     
+            'pro' => 'gemini-1.5-flash',       
+            'pro_plus' => 'gemini-1.5-pro',    
+            'enterprise' => 'gemini-1.5-pro',  
+            default => 'gemini-1.5-flash',
         };
     }
 
     /**
-     * Calculate cost for tokens
-     * 
-     * @param string $model AI model name
-     * @param int $inputTokens Number of input tokens
-     * @param int $outputTokens Number of output tokens
-     * @return float Cost in USD
+     * Calculate cost for API usage
      */
     public function calculateCost(string $model, int $inputTokens, int $outputTokens): float
     {
-        if (!isset(self::PRICING[$model])) {
+        if (!isset(self::MODEL_COSTS[$model])) {
             return 0.0;
         }
 
-        $pricing = self::PRICING[$model];
+        $costs = self::MODEL_COSTS[$model];
         
-        // Calculate cost per million tokens
-        $inputCost = ($inputTokens / 1_000_000) * $pricing['input'];
-        $outputCost = ($outputTokens / 1_000_000) * $pricing['output'];
+        $inputCost = ($inputTokens / 1_000_000) * $costs['input'];
+        $outputCost = ($outputTokens / 1_000_000) * $costs['output'];
         
         return round($inputCost + $outputCost, 6);
     }
 
     /**
-     * Get cost threshold for plan tier
-     * 
-     * @param string $planTier Plan tier (free, pro, pro_plus)
-     * @return float Threshold in USD
+     * Get cost threshold for a plan
      */
     public function getThreshold(string $planTier): float
     {
-        return self::THRESHOLDS[$planTier] ?? 0.00;
+        return match ($planTier) {
+            'free' => 0.0,
+            'pro' => 5.0,
+            'pro_plus' => 20.0,
+            'enterprise' => 0.0,
+            default => 0.0,
+        };
     }
 
     /**
-     * Check if cost threshold is reached
-     * 
-     * @param float $currentCost Current accumulated cost
-     * @param string $planTier Plan tier
-     * @return bool True if threshold reached
+     * Get model information
      */
-    public function isThresholdReached(float $currentCost, string $planTier): bool
+    public function getModelInfo(string $model): array
     {
-        $threshold = $this->getThreshold($planTier);
-        
-        // Free tier has no cost threshold (uses message count limit instead)
-        if ($planTier === 'free') {
-            return false;
+        if (!isset(self::MODEL_COSTS[$model])) {
+            return [
+                'model' => $model,
+                'input_cost_per_1m' => 0,
+                'output_cost_per_1m' => 0,
+                'provider' => 'unknown'
+            ];
         }
-        
-        return $currentCost >= $threshold;
+
+        $costs = self::MODEL_COSTS[$model];
+        $provider = str_starts_with($model, 'gemini') ? 'gemini' : 
+                   (str_starts_with($model, 'claude') ? 'anthropic' : 'unknown');
+
+        return [
+            'model' => $model,
+            'input_cost_per_1m' => $costs['input'],
+            'output_cost_per_1m' => $costs['output'],
+            'provider' => $provider
+        ];
     }
 
     /**
-     * Get remaining cost before threshold
-     * 
-     * @param float $currentCost Current accumulated cost
-     * @param string $planTier Plan tier
-     * @return float Remaining cost in USD
+     * Get all available models
      */
-    public function getRemainingCost(float $currentCost, string $planTier): float
+    public function getAvailableModels(): array
     {
-        $threshold = $this->getThreshold($planTier);
-        $remaining = $threshold - $currentCost;
-        
-        return max(0, $remaining);
+        return array_keys(self::MODEL_COSTS);
     }
 
     /**
-     * Get chat limit for plan tier
-     * 
-     * @param string $planTier Plan tier
-     * @return int|null Chat limit (null means unlimited until threshold)
+     * Check if model is available
      */
-    public function getChatLimit(string $planTier): ?int
+    public function isModelAvailable(string $model): bool
     {
-        return self::CHAT_LIMITS[$planTier];
+        return isset(self::MODEL_COSTS[$model]);
     }
 
     /**
-     * Get case limit for plan tier
-     * 
-     * @param string $planTier Plan tier
-     * @return int|null Case limit (null means unlimited)
+     * Get plan limits summary
      */
-    public function getCaseLimit(string $planTier): ?int
-    {
-        return self::CASE_LIMITS[$planTier];
-    }
-
-    /**
-     * Get document limit for plan tier
-     * 
-     * @param string $planTier Plan tier
-     * @return int|null Document limit (null means until threshold)
-     */
-    public function getDocumentLimit(string $planTier): ?int
-    {
-        return self::DOCUMENT_LIMITS[$planTier];
-    }
-
-    /**
-     * Estimate tokens from text (rough estimation)
-     * Rule of thumb: 1 token ≈ 4 characters for English text
-     * 
-     * @param string $text Text to estimate
-     * @return int Estimated token count
-     */
-    public function estimateTokens(string $text): int
-    {
-        return (int) ceil(strlen($text) / 4);
-    }
-
-    /**
-     * Get plan details including limits and thresholds
-     * 
-     * @param string $planTier Plan tier
-     * @return array Plan details
-     */
-    public function getPlanDetails(string $planTier): array
+    public function getPlanLimits(string $planTier): array
     {
         return [
-            'plan_tier' => $planTier,
-            'model' => $this->getModelForPlan($planTier),
             'chat_limit' => $this->getChatLimit($planTier),
-            'case_limit' => $this->getCaseLimit($planTier),
-            'document_limit' => $this->getDocumentLimit($planTier),
             'cost_threshold' => $this->getThreshold($planTier),
-            'pricing' => self::PRICING[$this->getModelForPlan($planTier)] ?? null,
+            'model' => $this->getModelForPlan($planTier),
         ];
     }
 }

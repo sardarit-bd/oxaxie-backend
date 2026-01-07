@@ -34,414 +34,235 @@ class ChatMessageController extends Controller
      * Send chat message and get AI response
      * This is the main endpoint for chat functionality
      */
-    // public function sendMessage(Request $request)
-    // {
-    //     $validated = $request->validate([
-    //         'all_case_id' => 'required|uuid|exists:all_cases,id',
-    //         'message' => 'required|string|min:1',
-    //     ]);
-
-    //     $user = $request->user();
-    //     $caseId = $validated['all_case_id'];
-    //     $userMessage = $validated['message'];
-
-    //     try {
-   
-    //         $case = AllCase::where('id', $caseId)
-    //             ->where('user_id', $user->id)
-    //             ->first();
-
-    //         if (!$case) {
-    //             return $this->errorResponse('Case not found or access denied', 404);
-    //         }
-
-    //         $limitCheck = $this->limitService->canSendMessage($user->id);
-            
-    //         if (!$limitCheck['allowed']) {
-    //             return $this->errorResponse(
-    //                 $limitCheck['reason'] ?? 'Chat limit reached',
-    //                 403,
-    //                 [
-    //                     'upgrade_required' => true,
-    //                     'current_plan' => $limitCheck['current_plan'] ?? null,
-    //                     'upgrade_to' => $limitCheck['upgrade_to'] ?? null,
-    //                     'limit_details' => [
-    //                         'limit' => $limitCheck['limit'] ?? null,
-    //                         'used' => $limitCheck['used'] ?? null,
-    //                         'threshold' => $limitCheck['threshold'] ?? null,
-    //                         'cost_accumulated' => $limitCheck['cost_accumulated'] ?? null,
-    //                     ]
-    //                 ]
-    //             );
-    //         }
-
-          
-    //         $subscription = $this->subscriptionRepository->getActiveByUserId($user->id);
-    //         $planTier = $subscription->plan_tier ?? 'free';
-    //         $aiModel = $this->costCalculator->getModelForPlan($planTier);
-
-          
-    //         $conversationHistory = ChatMessage::where('all_case_id', $caseId)
-    //             ->orderBy('created_at', 'asc')
-    //             ->get()
-    //             ->map(fn($msg) => [
-    //                 'role' => $msg->role,
-    //                 'content' => $msg->content
-    //             ])
-    //             ->toArray();
-
-         
-    //         $systemPrompt = $this->aiChatService->buildSystemPrompt([
-    //             'issue_type' => $case->issue_type,
-    //             'location_city' => $case->location_city,
-    //             'location_state' => $case->location_state,
-    //             'location_country' => $case->location_country,
-    //             'situation_description' => $case->situation_description,
-    //         ]);
-
-          
-    //         DB::beginTransaction();
-
-    //         try {
-             
-    //             $userChatMessage = ChatMessage::create([
-    //                 'id' => Str::uuid(),
-    //                 'all_case_id' => $caseId,
-    //                 'user_id' => $user->id,
-    //                 'role' => 'user',
-    //                 'content' => $userMessage,
-    //                 'metadata' => [
-    //                     'timestamp' => now()->toISOString(),
-    //                 ],
-    //             ]);
-
-    //             $aiResponse = $this->aiChatService->generateResponse(
-    //                 $aiModel,
-    //                 $systemPrompt,
-    //                 $conversationHistory,
-    //                 $userMessage
-    //             );
-
-               
-    //             $cost = $this->costCalculator->calculateCost(
-    //                 $aiModel,
-    //                 $aiResponse['input_tokens'],
-    //                 $aiResponse['output_tokens']
-    //             );
-
-               
-    //             $aiChatMessage = ChatMessage::create([
-    //                 'id' => Str::uuid(),
-    //                 'all_case_id' => $caseId,
-    //                 'user_id' => $user->id,
-    //                 'role' => 'assistant',
-    //                 'content' => $aiResponse['content'],
-    //                 'ai_model_used' => $aiModel,
-    //                 'input_tokens' => $aiResponse['input_tokens'],
-    //                 'output_tokens' => $aiResponse['output_tokens'],
-    //                 'cost' => $cost,
-    //                 'metadata' => [
-    //                     'timestamp' => now()->toISOString(),
-    //                 ],
-    //             ]);
-
-                
-    //             $today = Carbon::today()->toDateString();
-                
-    //             $this->usageTrackingService->incrementUsage($user->id, [
-    //                 'billing_cycle_date' => $today,
-    //                 'messages_used' => 1,
-    //                 'input_tokens_used' => $aiResponse['input_tokens'],
-    //                 'output_tokens_used' => $aiResponse['output_tokens'],
-    //                 'ai_cost_accumulated' => $cost,
-    //             ]);
-
-                
-    //             $threshold = $this->costCalculator->getThreshold($planTier);
-    //             if ($threshold > 0) {
-    //                 $this->usageTrackingService->checkCostThreshold(
-    //                     $user->id,
-    //                     $today,
-    //                     $threshold
-    //                 );
-    //             }
-
-    //             DB::commit();
-
-                
-    //             $usageWarning = $this->limitService->getUsageWarning($user->id);
-
-                
-    //             return $this->successResponse([
-    //                 'user_message' => $userChatMessage,
-    //                 'ai_message' => $aiChatMessage,
-    //                 'usage_warning' => $usageWarning,
-    //                 'usage_info' => [
-    //                     'tokens_used' => $aiResponse['input_tokens'] + $aiResponse['output_tokens'],
-    //                     'cost' => $cost,
-    //                     'model' => $aiModel,
-    //                 ]
-    //             ], 'Message sent successfully', 201);
-
-    //         } catch (Exception $e) {
-    //             DB::rollBack();
-                
-    //             Log::error('Chat message processing failed', [
-    //                 'user_id' => $user->id,
-    //                 'case_id' => $caseId,
-    //                 'error' => $e->getMessage(),
-    //                 'trace' => $e->getTraceAsString()
-    //             ]);
-
-
-    //             return $this->errorResponse(
-    //                 'Failed to generate AI response. Please try again.',
-    //                 500,
-    //                 ['error_details' => $e->getMessage()]
-    //             );
-    //         }
-
-    //     } catch (Exception $e) {
-    //         Log::error('Chat endpoint error', [
-    //             'user_id' => $user->id,
-    //             'error' => $e->getMessage()
-    //         ]);
-
-    //         return $this->errorResponse(
-    //             'An error occurred while processing your message',
-    //             500
-    //         );
-    //     }
-    // }
 
     public function sendMessage(Request $request)
-{
-    Log::info('=== Chat Send Request ===');
-    Log::info('Request data:', $request->all());
-    
-    $validated = $request->validate([
-        'all_case_id' => 'required|uuid|exists:all_cases,id',
-        'message' => 'required|string|min:1',
-        'messages' => 'sometimes|array', // Accept messages array from frontend
-        'system_prompt' => 'sometimes|string', // Accept custom system prompt
-    ]);
-
-    $user = $request->user();
-    $caseId = $validated['all_case_id'];
-    $userMessage = $validated['message'];
-
-    Log::info('Validated data:', [
-        'has_messages' => isset($validated['messages']),
-        'has_system_prompt' => isset($validated['system_prompt']),
-        'messages_count' => isset($validated['messages']) ? count($validated['messages']) : 0
-    ]);
-
-    // Debug the messages structure
-    if (isset($validated['messages'])) {
-        $lastMessage = end($validated['messages']);
-        Log::info('Last message in array:', [
-            'role' => $lastMessage['role'] ?? null,
-            'content_type' => gettype($lastMessage['content'] ?? null),
-            'content_is_array' => is_array($lastMessage['content'] ?? null),
+    {
+        Log::info('=== Chat Send Request ===');
+        Log::info('Request data:', $request->all());
+        
+        $validated = $request->validate([
+            'all_case_id' => 'required|uuid|exists:all_cases,id',
+            'message' => 'required|string|min:1',
+            'messages' => 'sometimes|array',
+            'system_prompt' => 'sometimes|string',
         ]);
-        
-        if (is_array($lastMessage['content'] ?? null)) {
-            Log::info('Content structure:', [
-                'item_count' => count($lastMessage['content']),
-                'items' => array_map(function($item) {
-                    return [
-                        'type' => $item['type'] ?? 'unknown',
-                        'has_source' => isset($item['source']),
-                        'has_text' => isset($item['text']),
-                        'source_type' => $item['source']['type'] ?? null,
-                        'media_type' => $item['source']['media_type'] ?? null,
-                        'data_length' => isset($item['source']['data']) ? strlen($item['source']['data']) : 0
-                    ];
-                }, $lastMessage['content'])
-            ]);
-        }
-    }
 
-    try {
-        $case = AllCase::where('id', $caseId)
-            ->where('user_id', $user->id)
-            ->first();
+        $user = $request->user();
+        $caseId = $validated['all_case_id'];
+        $userMessage = $validated['message'];
 
-        if (!$case) {
-            return $this->errorResponse('Case not found or access denied', 404);
-        }
+        Log::info('Validated data:', [
+            'has_messages' => isset($validated['messages']),
+            'has_system_prompt' => isset($validated['system_prompt']),
+            'messages_count' => isset($validated['messages']) ? count($validated['messages']) : 0
+        ]);
 
-        $limitCheck = $this->limitService->canSendMessage($user->id);
-        
-        if (!$limitCheck['allowed']) {
-            return $this->errorResponse(
-                $limitCheck['reason'] ?? 'Chat limit reached',
-                403,
-                [
-                    'upgrade_required' => true,
-                    'current_plan' => $limitCheck['current_plan'] ?? null,
-                    'upgrade_to' => $limitCheck['upgrade_to'] ?? null,
-                    'limit_details' => [
-                        'limit' => $limitCheck['limit'] ?? null,
-                        'used' => $limitCheck['used'] ?? null,
-                        'threshold' => $limitCheck['threshold'] ?? null,
-                        'cost_accumulated' => $limitCheck['cost_accumulated'] ?? null,
-                    ]
-                ]
-            );
-        }
-
-        $subscription = $this->subscriptionRepository->getActiveByUserId($user->id);
-        $planTier = $subscription->plan_tier ?? 'free';
-        $aiModel = $this->costCalculator->getModelForPlan($planTier);
-
-        // Use messages from frontend if provided, otherwise build from database
+      
         if (isset($validated['messages'])) {
-            Log::info('Using messages from frontend with images');
-            $conversationHistory = $validated['messages'];
-        } else {
-            Log::info('Building messages from database (no images)');
-            $conversationHistory = ChatMessage::where('all_case_id', $caseId)
-                ->orderBy('created_at', 'asc')
-                ->get()
-                ->map(fn($msg) => [
-                    'role' => $msg->role,
-                    'content' => $msg->content
-                ])
-                ->toArray();
-        }
-
-        // Use system prompt from frontend if provided, otherwise build it
-        if (isset($validated['system_prompt'])) {
-            Log::info('Using system prompt from frontend');
-            $systemPrompt = $validated['system_prompt'];
-        } else {
-            Log::info('Building system prompt from case data');
-            $systemPrompt = $this->aiChatService->buildSystemPrompt([
-                'issue_type' => $case->issue_type,
-                'location_city' => $case->location_city,
-                'location_state' => $case->location_state,
-                'location_country' => $case->location_country,
-                'situation_description' => $case->situation_description,
+            $lastMessage = end($validated['messages']);
+            Log::info('Last message in array:', [
+                'role' => $lastMessage['role'] ?? null,
+                'content_type' => gettype($lastMessage['content'] ?? null),
+                'content_is_array' => is_array($lastMessage['content'] ?? null),
             ]);
+            
+            if (is_array($lastMessage['content'] ?? null)) {
+                Log::info('Content structure:', [
+                    'item_count' => count($lastMessage['content']),
+                    'items' => array_map(function($item) {
+                        return [
+                            'type' => $item['type'] ?? 'unknown',
+                            'has_source' => isset($item['source']),
+                            'has_text' => isset($item['text']),
+                            'source_type' => $item['source']['type'] ?? null,
+                            'media_type' => $item['source']['media_type'] ?? null,
+                            'data_length' => isset($item['source']['data']) ? strlen($item['source']['data']) : 0
+                        ];
+                    }, $lastMessage['content'])
+                ]);
+            }
         }
-
-        DB::beginTransaction();
 
         try {
-            // Save user message to database
-            $userChatMessage = ChatMessage::create([
-                'id' => Str::uuid(),
-                'all_case_id' => $caseId,
-                'user_id' => $user->id,
-                'role' => 'user',
-                'content' => $userMessage,
-                'metadata' => [
-                    'timestamp' => now()->toISOString(),
-                ],
-            ]);
+            $case = AllCase::where('id', $caseId)
+                ->where('user_id', $user->id)
+                ->first();
 
-            // Generate AI response using the messages array (which may include images)
-            Log::info('Calling AI service with:', [
-                'model' => $aiModel,
-                'conversation_length' => count($conversationHistory),
-                'has_system_prompt' => !empty($systemPrompt)
-            ]);
+            if (!$case) {
+                return $this->errorResponse('Case not found or access denied', 404);
+            }
 
-            $aiResponse = $this->aiChatService->generateResponseWithMessages(
-                $aiModel,
-                $systemPrompt,
-                $conversationHistory  // This now includes images if they were sent
-            );
-
-            // Calculate cost
-            $cost = $this->costCalculator->calculateCost(
-                $aiModel,
-                $aiResponse['input_tokens'],
-                $aiResponse['output_tokens']
-            );
-
-            // Save AI response
-            $aiChatMessage = ChatMessage::create([
-                'id' => Str::uuid(),
-                'all_case_id' => $caseId,
-                'user_id' => $user->id,
-                'role' => 'assistant',
-                'content' => $aiResponse['content'],
-                'ai_model_used' => $aiModel,
-                'input_tokens' => $aiResponse['input_tokens'],
-                'output_tokens' => $aiResponse['output_tokens'],
-                'cost' => $cost,
-                'metadata' => [
-                    'timestamp' => now()->toISOString(),
-                ],
-            ]);
-
-            // Track usage
-            $today = Carbon::today()->toDateString();
+            $limitCheck = $this->limitService->canSendMessage($user->id);
             
-            $this->usageTrackingService->incrementUsage($user->id, [
-                'billing_cycle_date' => $today,
-                'messages_used' => 1,
-                'input_tokens_used' => $aiResponse['input_tokens'],
-                'output_tokens_used' => $aiResponse['output_tokens'],
-                'ai_cost_accumulated' => $cost,
-            ]);
-
-            // Check threshold
-            $threshold = $this->costCalculator->getThreshold($planTier);
-            if ($threshold > 0) {
-                $this->usageTrackingService->checkCostThreshold(
-                    $user->id,
-                    $today,
-                    $threshold
+            if (!$limitCheck['allowed']) {
+                return $this->errorResponse(
+                    $limitCheck['reason'] ?? 'Chat limit reached',
+                    403,
+                    [
+                        'upgrade_required' => true,
+                        'current_plan' => $limitCheck['current_plan'] ?? null,
+                        'upgrade_to' => $limitCheck['upgrade_to'] ?? null,
+                        'limit_details' => [
+                            'limit' => $limitCheck['limit'] ?? null,
+                            'used' => $limitCheck['used'] ?? null,
+                            'threshold' => $limitCheck['threshold'] ?? null,
+                            'cost_accumulated' => $limitCheck['cost_accumulated'] ?? null,
+                        ]
+                    ]
                 );
             }
 
-            DB::commit();
+            $subscription = $this->subscriptionRepository->getActiveByUserId($user->id);
+            $planTier = $subscription->plan_tier ?? 'free';
+            $aiModel = $this->costCalculator->getModelForPlan($planTier);
 
-            $usageWarning = $this->limitService->getUsageWarning($user->id);
+            // Use messages from frontend if provided, otherwise build from database
+            if (isset($validated['messages'])) {
+                Log::info('Using messages from frontend with images');
+                $conversationHistory = $validated['messages'];
+            } else {
+                Log::info('Building messages from database (no images)');
+                $conversationHistory = ChatMessage::where('all_case_id', $caseId)
+                    ->orderBy('created_at', 'asc')
+                    ->get()
+                    ->map(fn($msg) => [
+                        'role' => $msg->role,
+                        'content' => $msg->content
+                    ])
+                    ->toArray();
+            }
 
-            return $this->successResponse([
-                'user_message' => $userChatMessage,
-                'ai_message' => $aiChatMessage,
-                'usage_warning' => $usageWarning,
-                'usage_info' => [
-                    'tokens_used' => $aiResponse['input_tokens'] + $aiResponse['output_tokens'],
-                    'cost' => $cost,
+            // Use system prompt from frontend if provided, otherwise build it
+            if (isset($validated['system_prompt'])) {
+                Log::info('Using system prompt from frontend');
+                $systemPrompt = $validated['system_prompt'];
+            } else {
+                Log::info('Building system prompt from case data');
+                $systemPrompt = $this->aiChatService->buildSystemPrompt([
+                    'issue_type' => $case->issue_type,
+                    'location_city' => $case->location_city,
+                    'location_state' => $case->location_state,
+                    'location_country' => $case->location_country,
+                    'situation_description' => $case->situation_description,
+                ]);
+            }
+
+            DB::beginTransaction();
+
+            try {
+                // Save user message to database
+                $userChatMessage = ChatMessage::create([
+                    'id' => Str::uuid(),
+                    'all_case_id' => $caseId,
+                    'user_id' => $user->id,
+                    'role' => 'user',
+                    'content' => $userMessage,
+                    'metadata' => [
+                        'timestamp' => now()->toISOString(),
+                    ],
+                ]);
+
+                // Generate AI response using the messages array (which may include images)
+                Log::info('Calling AI service with:', [
                     'model' => $aiModel,
-                ]
-            ], 'Message sent successfully', 201);
+                    'conversation_length' => count($conversationHistory),
+                    'has_system_prompt' => !empty($systemPrompt)
+                ]);
+
+                $aiResponse = $this->aiChatService->generateResponseWithMessages(
+                    $aiModel,
+                    $systemPrompt,
+                    $conversationHistory  // This now includes images if they were sent
+                );
+
+                // Calculate cost
+                $cost = $this->costCalculator->calculateCost(
+                    $aiModel,
+                    $aiResponse['input_tokens'],
+                    $aiResponse['output_tokens']
+                );
+
+                // Save AI response
+                $aiChatMessage = ChatMessage::create([
+                    'id' => Str::uuid(),
+                    'all_case_id' => $caseId,
+                    'user_id' => $user->id,
+                    'role' => 'assistant',
+                    'content' => $aiResponse['content'],
+                    'ai_model_used' => $aiModel,
+                    'input_tokens' => $aiResponse['input_tokens'],
+                    'output_tokens' => $aiResponse['output_tokens'],
+                    'cost' => $cost,
+                    'metadata' => [
+                        'timestamp' => now()->toISOString(),
+                    ],
+                ]);
+
+                // Track usage
+                $today = Carbon::today()->toDateString();
+                
+                $this->usageTrackingService->incrementUsage($user->id, [
+                    'billing_cycle_date' => $today,
+                    'messages_used' => 1,
+                    'input_tokens_used' => $aiResponse['input_tokens'],
+                    'output_tokens_used' => $aiResponse['output_tokens'],
+                    'ai_cost_accumulated' => $cost,
+                ]);
+
+                // Check threshold
+                $threshold = $this->costCalculator->getThreshold($planTier);
+                if ($threshold > 0) {
+                    $this->usageTrackingService->checkCostThreshold(
+                        $user->id,
+                        $today,
+                        $threshold
+                    );
+                }
+
+                DB::commit();
+
+                $usageWarning = $this->limitService->getUsageWarning($user->id);
+
+                return $this->successResponse([
+                    'user_message' => $userChatMessage,
+                    'ai_message' => $aiChatMessage,
+                    'usage_warning' => $usageWarning,
+                    'usage_info' => [
+                        'tokens_used' => $aiResponse['input_tokens'] + $aiResponse['output_tokens'],
+                        'cost' => $cost,
+                        'model' => $aiModel,
+                    ]
+                ], 'Message sent successfully', 201);
+
+            } catch (Exception $e) {
+                DB::rollBack();
+                
+                Log::error('Chat message processing failed', [
+                    'user_id' => $user->id,
+                    'case_id' => $caseId,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+
+                return $this->errorResponse(
+                    'Failed to generate AI response. Please try again.',
+                    500,
+                    ['error_details' => $e->getMessage()]
+                );
+            }
 
         } catch (Exception $e) {
-            DB::rollBack();
-            
-            Log::error('Chat message processing failed', [
+            Log::error('Chat endpoint error', [
                 'user_id' => $user->id,
-                'case_id' => $caseId,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'error' => $e->getMessage()
             ]);
 
             return $this->errorResponse(
-                'Failed to generate AI response. Please try again.',
-                500,
-                ['error_details' => $e->getMessage()]
+                'An error occurred while processing your message',
+                500
             );
         }
-
-    } catch (Exception $e) {
-        Log::error('Chat endpoint error', [
-            'user_id' => $user->id,
-            'error' => $e->getMessage()
-        ]);
-
-        return $this->errorResponse(
-            'An error occurred while processing your message',
-            500
-        );
     }
-}
 
     /**
      * Store a chat message (kept for backward compatibility if needed)

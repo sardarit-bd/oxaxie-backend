@@ -2,25 +2,70 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Http;
+use App\Contracts\AiProviderInterface;
+use App\Services\AiProviders\GeminiProvider;
+use App\Services\AiProviders\AnthropicProvider;
 use Illuminate\Support\Facades\Log;
 use Exception;
 
 /**
- * AI Chat Service
- * Handles communication with AI models (Gemini, Claude)
+ * AI Chat Service - Facade for multiple AI providers
+ * Uses Strategy Pattern to support different AI providers
  */
 class AiChatService
 {
+    protected array $providers = [];
+
+    public function __construct()
+    {
+        // Register available providers
+        // Gemini
+        if (!empty(config('services.gemini.api_key'))) {
+            try {
+                $this->providers['gemini'] = new GeminiProvider();
+                Log::info('Gemini provider registered');
+            } catch (Exception $e) {
+                Log::warning('Gemini provider failed to initialize: ' . $e->getMessage());
+            }
+        }
+
+        // Anthropic
+        if (!empty(config('services.anthropic.api_key'))) {
+            try {
+                $this->providers['anthropic'] = new AnthropicProvider();
+                Log::info('Anthropic provider registered');
+            } catch (Exception $e) {
+                Log::warning('Anthropic provider failed to initialize: ' . $e->getMessage());
+            }
+        }
+
+        if (empty($this->providers)) {
+            throw new Exception('No AI providers configured. Please set GEMINI_API_KEY or ANTHROPIC_API_KEY in .env');
+        }
+    }
+
+    /**
+     * Get the appropriate provider for a model
+     */
+    protected function getProvider(string $model): AiProviderInterface
+    {
+        foreach ($this->providers as $provider) {
+            if ($provider->supportsModel($model)) {
+                return $provider;
+            }
+        }
+
+        // If no provider found, throw helpful error
+        $availableProviders = array_keys($this->providers);
+        throw new Exception(
+            "No provider found for model: {$model}. " .
+            "Available providers: " . implode(', ', $availableProviders) . ". " .
+            "Please configure the appropriate API key in .env"
+        );
+    }
+
     /**
      * Generate AI response using specified model
-     * 
-     * @param string $model Model name
-     * @param string $systemPrompt System context
-     * @param array $conversationHistory Previous messages
-     * @param string $userMessage Current user message
-     * @return array ['content' => string, 'input_tokens' => int, 'output_tokens' => int]
-     * @throws Exception
      */
     public function generateResponse(
         string $model,
@@ -28,253 +73,42 @@ class AiChatService
         array $conversationHistory,
         string $userMessage
     ): array {
-        return match (true) {
-            str_starts_with($model, 'gemini') => $this->callGemini($model, $systemPrompt, $conversationHistory, $userMessage),
-            str_starts_with($model, 'claude') => $this->callClaude($model, $systemPrompt, $conversationHistory, $userMessage),
-            default => throw new Exception('Unsupported AI model: ' . $model),
-        };
-    }
-
-
-    /**
- * Generate AI response using pre-built messages array (supports images)
- */
-public function generateResponseWithMessages(
-    string $model,
-    string $systemPrompt,
-    array $messages
-): array {
-    Log::info('=== AI Service Generate Response ===');
-    Log::info('Model:', ['model' => $model]);
-    Log::info('Messages count:', ['count' => count($messages)]);
-    
-    // Log each message structure
-    foreach ($messages as $idx => $message) {
-        Log::info("Message $idx:", [
-            'role' => $message['role'] ?? 'unknown',
-            'content_type' => gettype($message['content'] ?? null),
-            'is_array' => is_array($message['content'] ?? null),
-        ]);
-    }
-
-    try {
-        $response = Http::withHeaders([
-            'x-api-key' => config('services.anthropic.api_key'),
-            'anthropic-version' => '2023-06-01',
-            'content-type' => 'application/json',
-        ])->post('https://api.anthropic.com/v1/messages', [
+        $provider = $this->getProvider($model);
+        
+        Log::info('Using provider for model', [
             'model' => $model,
-            'max_tokens' => 4096,
-            'system' => $systemPrompt,
-            'messages' => $messages,
+            'provider' => get_class($provider)
         ]);
 
-        if (!$response->successful()) {
-            Log::error('Anthropic API error:', [
-                'status' => $response->status(),
-                'body' => $response->body()
-            ]);
-            throw new Exception('AI service error: ' . $response->body());
-        }
-
-        $result = $response->json();
-        
-        Log::info('AI Response received:', [
-            'input_tokens' => $result['usage']['input_tokens'] ?? 0,
-            'output_tokens' => $result['usage']['output_tokens'] ?? 0,
-            'content_length' => strlen($result['content'][0]['text'] ?? '')
-        ]);
-
-        return [
-            'content' => $result['content'][0]['text'] ?? '',
-            'input_tokens' => $result['usage']['input_tokens'] ?? 0,
-            'output_tokens' => $result['usage']['output_tokens'] ?? 0,
-        ];
-
-    } catch (Exception $e) {
-        Log::error('AI service exception:', [
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-        throw $e;
+        return $provider->generateResponse(
+            $model,
+            $systemPrompt,
+            $conversationHistory,
+            $userMessage
+        );
     }
-}
-
 
     /**
-     * Call Google Gemini API
+     * Generate AI response using pre-built messages array (supports images)
      */
-    protected function callGemini(
+    public function generateResponseWithMessages(
         string $model,
         string $systemPrompt,
-        array $conversationHistory,
-        string $userMessage
+        array $messages
     ): array {
-        $apiKey = config('services.gemini.api_key');
+        $provider = $this->getProvider($model);
         
-        if (!$apiKey) {
-            throw new Exception('Gemini API key not configured');
-        }
+        Log::info('Using provider for model with messages', [
+            'model' => $model,
+            'provider' => get_class($provider),
+            'messages_count' => count($messages)
+        ]);
 
-        // Build conversation text
-        $conversationText = $systemPrompt . "\n\n";
-        
-        // Add recent history (last 5 messages)
-        $recentHistory = array_slice($conversationHistory, -5);
-        foreach ($recentHistory as $msg) {
-            $role = $msg['role'] === 'user' ? 'User' : 'Assistant';
-            $conversationText .= "{$role}: {$msg['content']}\n\n";
-        }
-        
-        $conversationText .= "User: {$userMessage}\n\nAssistant:";
-
-        try {
-            $response = Http::timeout(60)
-                ->post("https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key={$apiKey}", [
-                    'contents' => [
-                        [
-                            'parts' => [
-                                ['text' => $conversationText]
-                            ]
-                        ]
-                    ],
-                    'generationConfig' => [
-                        'temperature' => 0.7,
-                        'maxOutputTokens' => 2048,
-                    ]
-                ]);
-
-            if (!$response->successful()) {
-                Log::error('Gemini API error', [
-                    'status' => $response->status(),
-                    'body' => $response->body()
-                ]);
-                throw new Exception('Failed to get response from Gemini AI');
-            }
-
-            $data = $response->json();
-            
-            $content = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
-            
-            if (empty($content)) {
-                throw new Exception('Empty response from Gemini AI');
-            }
-
-            // Estimate tokens (Gemini doesn't always return token counts)
-            $inputTokens = $this->estimateTokens($conversationText);
-            $outputTokens = $this->estimateTokens($content);
-
-            // Try to get actual token counts if available
-            if (isset($data['usageMetadata'])) {
-                $inputTokens = $data['usageMetadata']['promptTokenCount'] ?? $inputTokens;
-                $outputTokens = $data['usageMetadata']['candidatesTokenCount'] ?? $outputTokens;
-            }
-
-            return [
-                'content' => $content,
-                'input_tokens' => $inputTokens,
-                'output_tokens' => $outputTokens,
-            ];
-
-        } catch (Exception $e) {
-            Log::error('Gemini API exception', [
-                'message' => $e->getMessage(),
-                'model' => $model
-            ]);
-            throw $e;
-        }
-    }
-
-    /**
-     * Call Anthropic Claude API
-     */
-    protected function callClaude(
-        string $model,
-        string $systemPrompt,
-        array $conversationHistory,
-        string $userMessage
-    ): array {
-        $apiKey = config('services.claude.api_key');
-        
-        if (!$apiKey) {
-            throw new Exception('Claude API key not configured');
-        }
-
-        // Build messages array for Claude
-        $messages = [];
-        
-        // Add conversation history
-        foreach ($conversationHistory as $msg) {
-            if ($msg['role'] !== 'system') {
-                $messages[] = [
-                    'role' => $msg['role'],
-                    'content' => $msg['content']
-                ];
-            }
-        }
-        
-        // Add current user message
-        $messages[] = [
-            'role' => 'user',
-            'content' => $userMessage
-        ];
-
-        try {
-            $response = Http::timeout(60)
-                ->withHeaders([
-                    'x-api-key' => $apiKey,
-                    'anthropic-version' => '2023-06-01',
-                    'content-type' => 'application/json',
-                ])
-                ->post('https://api.anthropic.com/v1/messages', [
-                    'model' => $model,
-                    'system' => $systemPrompt,
-                    'messages' => $messages,
-                    'max_tokens' => 2048,
-                    'temperature' => 0.7,
-                ]);
-
-            if (!$response->successful()) {
-                Log::error('Claude API error', [
-                    'status' => $response->status(),
-                    'body' => $response->body()
-                ]);
-                throw new Exception('Failed to get response from Claude AI');
-            }
-
-            $data = $response->json();
-            
-            $content = $data['content'][0]['text'] ?? '';
-            
-            if (empty($content)) {
-                throw new Exception('Empty response from Claude AI');
-            }
-
-            $inputTokens = $data['usage']['input_tokens'] ?? 0;
-            $outputTokens = $data['usage']['output_tokens'] ?? 0;
-
-            return [
-                'content' => $content,
-                'input_tokens' => $inputTokens,
-                'output_tokens' => $outputTokens,
-            ];
-
-        } catch (Exception $e) {
-            Log::error('Claude API exception', [
-                'message' => $e->getMessage(),
-                'model' => $model
-            ]);
-            throw $e;
-        }
-    }
-
-    /**
-     * Estimate tokens from text
-     * Rule of thumb: 1 token ≈ 4 characters for English text
-     */
-    protected function estimateTokens(string $text): int
-    {
-        return (int) ceil(strlen($text) / 4);
+        return $provider->generateResponseWithMessages(
+            $model,
+            $systemPrompt,
+            $messages
+        );
     }
 
     /**
@@ -300,5 +134,21 @@ Important Guidelines:
 - Keep responses concise but comprehensive
 
 Always conclude responses by asking if they have any questions or if there's anything specific they'd like to explore further.";
+    }
+
+    /**
+     * Check if a provider is available
+     */
+    public function hasProvider(string $providerName): bool
+    {
+        return isset($this->providers[$providerName]);
+    }
+
+    /**
+     * Get list of available providers
+     */
+    public function getAvailableProviders(): array
+    {
+        return array_keys($this->providers);
     }
 }

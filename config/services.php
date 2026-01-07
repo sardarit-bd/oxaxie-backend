@@ -46,4 +46,13 @@ return [
         'model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
     ],
 
+    'anthropic' => [
+        'api_key' => env('ANTHROPIC_API_KEY'),
+        'model' => env('ANTHROPIC_MODEL', 'claude-3-5-sonnet-20241022'),
+    ],
+
+    'ai' => [
+        'default_provider' => env('AI_PROVIDER', 'gemini'),
+    ],
+
 ];
