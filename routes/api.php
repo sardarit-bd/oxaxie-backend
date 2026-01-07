@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\WebhookController;
 use App\Http\Controllers\Api\DocumentController;
 use App\Http\Controllers\Api\ChatMessageController;
+use App\Http\Controllers\Api\CaseDocumentController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\UsageTrackingController;
 use App\Http\Controllers\Api\CreditPurchaseController;
@@ -25,6 +26,13 @@ Route::middleware('auth:api')->group(function () {
     // case routes
     Route::apiResource('/case', AllCaseController::class);
     Route::get('/case/user/all-cases', [AllCaseController::class, 'userCases']);
+
+    Route::get('/case/document/{document}/download', [CaseDocumentController::class, 'download'])
+        ->name('case.document.download');
+    Route::delete('/case/document/{document}', [CaseDocumentController::class, 'destroy']);
+    Route::post('/case/{caseId}/documents', [CaseDocumentController::class, 'uploadToCaseAdditional']);
+
+
 
     // chat routes
     Route::post('/chat/send', [ChatMessageController::class, 'sendMessage']);

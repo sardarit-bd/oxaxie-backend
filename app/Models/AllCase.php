@@ -43,22 +43,27 @@ class AllCase extends Model
 
     public function chatMessages(): HasMany
     {
-        return $this->hasMany(ChatMessage::class, 'case_id');
+        return $this->hasMany(ChatMessage::class, 'all_case_id');
     }
 
     public function documents(): HasMany
     {
-        return $this->hasMany(Document::class, 'case_id');
+        return $this->hasMany(Document::class, 'all_case_id');
+    }
+
+    public function caseDocuments(): HasMany
+    {
+        return $this->hasMany(CaseDocument::class, 'all_case_id');
     }
 
     public function responseFeedback(): HasMany
     {
-        return $this->hasMany(ResponseFeedback::class, 'case_id');
+        return $this->hasMany(ResponseFeedback::class, 'all_case_id');
     }
 
     public function outcome(): HasOne
     {
-        return $this->hasOne(CaseOutcome::class, 'case_id');
+        return $this->hasOne(CaseOutcome::class, 'all_case_id');
     }
 
     // Helper methods

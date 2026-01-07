@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\AllCaseRequest;
 use App\Services\SubscriptionLimitService;
 use App\Services\UsageTrackingService;
+use App\Services\FileUploadService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,7 +20,8 @@ class AllCaseController extends Controller
 
     public function __construct(
         protected SubscriptionLimitService $limitService,
-        protected UsageTrackingService $usageTrackingService
+        protected UsageTrackingService $usageTrackingService,
+        protected FileUploadService $fileUploadService
     ) {}
 
     /**
@@ -36,9 +38,16 @@ class AllCaseController extends Controller
     public function store(AllCaseRequest $request)
     {
         $user = $request->user();
+        
+        $documentKeys = [];
+        foreach ($request->all() as $key => $value) {
+            if (strpos($key, 'document') !== false) {
+                $documentKeys[] = $key;
+            }
+        }
+        Log::info('Keys containing "document":', ['keys' => $documentKeys]);
 
         try {
-            // 1. Check if user can create case
             $limitCheck = $this->limitService->canCreateCase($user->id);
             
             if (!$limitCheck['allowed']) {
@@ -62,7 +71,7 @@ class AllCaseController extends Controller
             DB::beginTransaction();
 
             try {
-                // 2. Create the case
+                // Create case
                 $case = $user->cases()->create([
                     'issue_type' => $validated['issue_type'],
                     'location_city' => $validated['location_city'] ?? null,
@@ -72,9 +81,25 @@ class AllCaseController extends Controller
                     'status' => 'active'
                 ]);
 
-                // 3. Increment case count in usage tracking
-                $today = Carbon::today()->toDateString();
+                // Handle file uploads
+                $uploadedDocuments = [];
+                $uploadErrors = [];
                 
+                if ($request->hasFile('documents')) {
+                    $files = $request->file('documents');
+                    $uploadResult = $this->fileUploadService->uploadMultipleFiles(
+                        $files,
+                        $case->id,
+                        $user->id,
+                        $validated['issue_type']
+                    );
+                    
+                    $uploadedDocuments = $uploadResult['uploaded'];
+                    $uploadErrors = $uploadResult['errors'];
+                }
+
+                // Track usage
+                $today = Carbon::today()->toDateString();
                 $this->usageTrackingService->incrementUsage($user->id, [
                     'billing_cycle_date' => $today,
                     'cases_created' => 1,
@@ -82,19 +107,31 @@ class AllCaseController extends Controller
 
                 DB::commit();
 
-                // 4. Get remaining cases for user info
+                // Load case with both AI-generated documents and user-uploaded case documents
+                $case->load(['documents', 'caseDocuments']);
+
                 $usageSummary = $this->limitService->getUsageSummary($user->id);
 
+                $response = [
+                    'case' => $case,
+                    'usage_info' => [
+                        'cases_created' => $usageSummary['cases']['created'],
+                        'cases_limit' => $usageSummary['cases']['limit'],
+                        'cases_remaining' => $usageSummary['cases']['remaining'],
+                    ]
+                ];
+
+                // Include upload info if there were documents
+                if (!empty($uploadedDocuments) || !empty($uploadErrors)) {
+                    $response['upload_info'] = [
+                        'uploaded_count' => count($uploadedDocuments),
+                        'errors' => $uploadErrors,
+                    ];
+                }
+
                 return $this->successResponse(
-                    [
-                        'case' => $case,
-                        'usage_info' => [
-                            'cases_created' => $usageSummary['cases']['created'],
-                            'cases_limit' => $usageSummary['cases']['limit'],
-                            'cases_remaining' => $usageSummary['cases']['remaining'],
-                        ]
-                    ],
-                    'Case created successfully',
+                    $response,
+                    'Case created successfully' . (!empty($uploadErrors) ? ' with some upload errors' : ''),
                     201
                 );
 
@@ -103,7 +140,8 @@ class AllCaseController extends Controller
                 
                 Log::error('Case creation failed', [
                     'user_id' => $user->id,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
                 ]);
 
                 return $this->errorResponse(
@@ -130,7 +168,7 @@ class AllCaseController extends Controller
      */
     public function show(string $id)
     {
-        $case = auth()->user()->cases()->find($id);
+        $case = auth('api')->user()->cases()->with(['documents', 'caseDocuments'])->find($id);
 
         if ($case) {
             return $this->successResponse(
@@ -143,18 +181,6 @@ class AllCaseController extends Controller
         return $this->errorResponse(
             'Case not found',
             404
-        );
-    }
-
-    /**
-     * Get all cases for a user.
-     */
-    public function userCases()
-    {
-        return $this->successResponse(
-            auth()->user()->cases()->simplePaginate(10),
-            'User cases retrieved successfully',
-            200
         );
     }
 
@@ -186,8 +212,20 @@ class AllCaseController extends Controller
         $case->update($validated);
 
         return $this->successResponse(
-            $case,
+            $case->load(['documents', 'caseDocuments']),
             'Case updated successfully',
+            200
+        );
+    }
+
+    /**
+     * Get all cases for a user.
+     */
+    public function userCases()
+    {
+        return $this->successResponse(
+            auth('api')->user()->cases()->with(['caseDocuments'])->simplePaginate(10),
+            'User cases retrieved successfully',
             200
         );
     }
@@ -197,7 +235,7 @@ class AllCaseController extends Controller
      */
     public function destroy(string $id)
     {
-        $user = auth()->user();
+        $user = auth('api')->user();
         
         $case = $user->cases()->find($id);
 
@@ -208,6 +246,7 @@ class AllCaseController extends Controller
             );
         }
 
+        // Delete will cascade to both documents and caseDocuments and their files
         $case->delete();
 
         return $this->successResponse(
