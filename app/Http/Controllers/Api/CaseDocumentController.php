@@ -70,6 +70,31 @@ class CaseDocumentController extends Controller
         }
     }
 
+
+    /**
+     * Get document file content (for images)
+     */
+    public function getDocumentContent(CaseDocument $document)
+    {
+        $user = auth('api')->user();
+
+        // Check authorization
+        if ($document->user_id !== $user->id) {
+            abort(403, 'Unauthorized access to document');
+        }
+
+        // Check if file exists
+        if (!Storage::disk('private')->exists($document->file_path)) {
+            abort(404, 'File not found');
+        }
+
+        $file = Storage::disk('private')->get($document->file_path);
+
+        return response($file, 200)
+            ->header('Content-Type', $document->mime_type)
+            ->header('Content-Length', $document->file_size);
+    }
+
     /**
      * Upload additional documents to existing case.
      */

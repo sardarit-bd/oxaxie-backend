@@ -231,6 +231,31 @@ class AllCaseController extends Controller
     }
 
     /**
+     * Get user-uploaded documents for a case
+     */
+    public function getCaseDocuments(string $id)
+    {
+        $user = auth('api')->user();
+        
+        $case = $user->cases()->find($id);
+
+        if (!$case) {
+            return $this->errorResponse('Case not found', 404);
+        }
+
+        // Load only user-uploaded case documents (not AI-generated documents)
+        $caseDocuments = $case->caseDocuments()
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return $this->successResponse(
+            $caseDocuments,
+            'Case documents retrieved successfully',
+            200
+        );
+    }
+
+    /**
      * Remove the specified resource from storage.
      */
     public function destroy(string $id)

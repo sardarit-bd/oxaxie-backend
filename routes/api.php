@@ -29,8 +29,10 @@ Route::middleware('auth:api')->group(function () {
 
     Route::get('/case/document/{document}/download', [CaseDocumentController::class, 'download'])
         ->name('case.document.download');
+    Route::get('/case/document/{document}/content', [CaseDocumentController::class, 'getDocumentContent']);
     Route::delete('/case/document/{document}', [CaseDocumentController::class, 'destroy']);
     Route::post('/case/{caseId}/documents', [CaseDocumentController::class, 'uploadToCaseAdditional']);
+    Route::get('/case/{id}/case-documents', [AllCaseController::class, 'getCaseDocuments']);
 
 
 

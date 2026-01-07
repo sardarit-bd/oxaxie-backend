@@ -35,6 +35,72 @@ class AiChatService
         };
     }
 
+
+    /**
+ * Generate AI response using pre-built messages array (supports images)
+ */
+public function generateResponseWithMessages(
+    string $model,
+    string $systemPrompt,
+    array $messages
+): array {
+    Log::info('=== AI Service Generate Response ===');
+    Log::info('Model:', ['model' => $model]);
+    Log::info('Messages count:', ['count' => count($messages)]);
+    
+    // Log each message structure
+    foreach ($messages as $idx => $message) {
+        Log::info("Message $idx:", [
+            'role' => $message['role'] ?? 'unknown',
+            'content_type' => gettype($message['content'] ?? null),
+            'is_array' => is_array($message['content'] ?? null),
+        ]);
+    }
+
+    try {
+        $response = Http::withHeaders([
+            'x-api-key' => config('services.anthropic.api_key'),
+            'anthropic-version' => '2023-06-01',
+            'content-type' => 'application/json',
+        ])->post('https://api.anthropic.com/v1/messages', [
+            'model' => $model,
+            'max_tokens' => 4096,
+            'system' => $systemPrompt,
+            'messages' => $messages,
+        ]);
+
+        if (!$response->successful()) {
+            Log::error('Anthropic API error:', [
+                'status' => $response->status(),
+                'body' => $response->body()
+            ]);
+            throw new Exception('AI service error: ' . $response->body());
+        }
+
+        $result = $response->json();
+        
+        Log::info('AI Response received:', [
+            'input_tokens' => $result['usage']['input_tokens'] ?? 0,
+            'output_tokens' => $result['usage']['output_tokens'] ?? 0,
+            'content_length' => strlen($result['content'][0]['text'] ?? '')
+        ]);
+
+        return [
+            'content' => $result['content'][0]['text'] ?? '',
+            'input_tokens' => $result['usage']['input_tokens'] ?? 0,
+            'output_tokens' => $result['usage']['output_tokens'] ?? 0,
+        ];
+
+    } catch (Exception $e) {
+        Log::error('AI service exception:', [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        throw $e;
+    }
+}
+
+
     /**
      * Call Google Gemini API
      */
