@@ -111,6 +111,7 @@ class AllCaseResource extends Resource
                     ->label('Name')
                     ->searchable(),
                 TextColumn::make('issue_type')
+                    ->label('Issue Type')
                     ->badge(),
                 TextColumn::make('location_city')
                     ->label('City')

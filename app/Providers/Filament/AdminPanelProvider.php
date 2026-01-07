@@ -34,7 +34,7 @@ class AdminPanelProvider extends PanelProvider
             ->darkMode(false)
             ->maxContentWidth('full')
             ->colors([
-                'primary' => Color::Amber,
+                'primary' => Color::Blue,
             ])
             ->viteTheme('resources/css/filament/admin/theme.css')
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
