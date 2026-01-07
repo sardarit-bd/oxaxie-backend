@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Exception;
+use App\Models\User;
 
 class AiCostCalculatorService
 {
@@ -27,6 +28,30 @@ class AiCostCalculatorService
         'enterprise' => -1,    
     ];
 
+    // Case limits per plan
+    private const CASE_LIMITS = [
+        'free' => 0,
+        'pro' => 3,
+        'pro_plus' => -1,  // unlimited
+        'enterprise' => -1,
+    ];
+
+    // Document limits per plan
+    private const DOCUMENT_LIMITS = [
+        'free' => 1,
+        'pro' => -1,  // unlimited
+        'pro_plus' => -1,
+        'enterprise' => -1,
+    ];
+
+    // Message limits per plan
+    private const MESSAGE_LIMITS = [
+        'free' => 10,
+        'pro' => -1,  // unlimited
+        'pro_plus' => -1,
+        'enterprise' => -1,
+    ];
+
     /**
      * Get chat message limit for a plan
      */
@@ -36,13 +61,146 @@ class AiCostCalculatorService
     }
 
     /**
+     * Get case limit for a plan
+     */
+    public function getCaseLimit(string $planTier): int
+    {
+        return self::CASE_LIMITS[$planTier] ?? 0;
+    }
+
+    /**
+     * Get document limit for a plan
+     */
+    public function getDocumentLimit(string $planTier): int
+    {
+        return self::DOCUMENT_LIMITS[$planTier] ?? 1;
+    }
+
+    /**
+     * Get message limit for a plan
+     */
+    public function getMessageLimit(string $planTier): int
+    {
+        return self::MESSAGE_LIMITS[$planTier] ?? 10;
+    }
+
+    /**
+     * Check if user has reached their case limit
+     */
+    public function hasReachedCaseLimit(User $user): bool
+    {
+        $planTier = $user->subscription?->plan_tier ?? 'free';
+        $limit = $this->getCaseLimit($planTier);
+        
+        // -1 means unlimited
+        if ($limit === -1) {
+            return false;
+        }
+
+        // Get current usage
+        $currentUsage = $user->currentUsage;
+        $casesUsed = $currentUsage?->cases_created ?? 0;
+
+        return $casesUsed >= $limit;
+    }
+
+    /**
+     * Check if user has reached their message limit
+     */
+    public function hasReachedMessageLimit(User $user): bool
+    {
+        $planTier = $user->subscription?->plan_tier ?? 'free';
+        $limit = $this->getMessageLimit($planTier);
+        
+        if ($limit === -1) {
+            return false;
+        }
+
+        $currentUsage = $user->currentUsage;
+        $messagesUsed = $currentUsage?->messages_used ?? 0;
+
+        return $messagesUsed >= $limit;
+    }
+
+    /**
+     * Check if user has reached their document limit
+     */
+    public function hasReachedDocumentLimit(User $user): bool
+    {
+        $planTier = $user->subscription?->plan_tier ?? 'free';
+        $limit = $this->getDocumentLimit($planTier);
+        
+        if ($limit === -1) {
+            return false;
+        }
+
+        $currentUsage = $user->currentUsage;
+        $documentsUsed = $currentUsage?->documents_generated ?? 0;
+
+        return $documentsUsed >= $limit;
+    }
+
+    /**
+     * Get remaining cases for user
+     */
+    public function getRemainingCases(User $user): int
+    {
+        $planTier = $user->subscription?->plan_tier ?? 'free';
+        $limit = $this->getCaseLimit($planTier);
+        
+        if ($limit === -1) {
+            return -1; // unlimited
+        }
+
+        $currentUsage = $user->currentUsage;
+        $casesUsed = $currentUsage?->cases_created ?? 0;
+
+        return max(0, $limit - $casesUsed);
+    }
+
+    /**
+     * Get remaining messages for user
+     */
+    public function getRemainingMessages(User $user): int
+    {
+        $planTier = $user->subscription?->plan_tier ?? 'free';
+        $limit = $this->getMessageLimit($planTier);
+        
+        if ($limit === -1) {
+            return -1; // unlimited
+        }
+
+        $currentUsage = $user->currentUsage;
+        $messagesUsed = $currentUsage?->messages_used ?? 0;
+
+        return max(0, $limit - $messagesUsed);
+    }
+
+    /**
+     * Get remaining documents for user
+     */
+    public function getRemainingDocuments(User $user): int
+    {
+        $planTier = $user->subscription?->plan_tier ?? 'free';
+        $limit = $this->getDocumentLimit($planTier);
+        
+        if ($limit === -1) {
+            return -1; // unlimited
+        }
+
+        $currentUsage = $user->currentUsage;
+        $documentsUsed = $currentUsage?->documents_generated ?? 0;
+
+        return max(0, $limit - $documentsUsed);
+    }
+
+    /**
      * Get the appropriate model for a plan tier
      */
     public function getModelForPlan(string $planTier): string
     {
         $provider = config('services.ai.default_provider', 'gemini');
         
-   
         if ($provider === 'gemini' && config('services.gemini.model')) {
             return config('services.gemini.model');
         }
@@ -60,7 +218,6 @@ class AiCostCalculatorService
                 default => 'claude-3-5-sonnet-20241022',
             };
         }
-        
 
         return match ($planTier) {
             'free' => 'gemini-1.5-flash',     
@@ -151,8 +308,42 @@ class AiCostCalculatorService
     {
         return [
             'chat_limit' => $this->getChatLimit($planTier),
+            'case_limit' => $this->getCaseLimit($planTier),
+            'message_limit' => $this->getMessageLimit($planTier),
+            'document_limit' => $this->getDocumentLimit($planTier),
             'cost_threshold' => $this->getThreshold($planTier),
             'model' => $this->getModelForPlan($planTier),
+        ];
+    }
+
+    /**
+     * Get all limits for a user
+     */
+    public function getUserLimits(User $user): array
+    {
+        $planTier = $user->subscription?->plan_tier ?? 'free';
+        
+        return [
+            'plan_tier' => $planTier,
+            'limits' => [
+                'cases' => [
+                    'limit' => $this->getCaseLimit($planTier),
+                    'used' => $user->currentUsage?->cases_created ?? 0,
+                    'remaining' => $this->getRemainingCases($user),
+                ],
+                'messages' => [
+                    'limit' => $this->getMessageLimit($planTier),
+                    'used' => $user->currentUsage?->messages_used ?? 0,
+                    'remaining' => $this->getRemainingMessages($user),
+                ],
+                'documents' => [
+                    'limit' => $this->getDocumentLimit($planTier),
+                    'used' => $user->currentUsage?->documents_generated ?? 0,
+                    'remaining' => $this->getRemainingDocuments($user),
+                ],
+            ],
+            'model' => $this->getModelForPlan($planTier),
+            'cost_threshold' => $this->getThreshold($planTier),
         ];
     }
 }

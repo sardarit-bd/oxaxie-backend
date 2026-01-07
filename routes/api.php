@@ -16,13 +16,16 @@ use App\Http\Controllers\Api\CreditPurchaseController;
 Route::controller(AuthController::class)->group(function () {
     Route::post('register', 'register');
     Route::post('login', 'login');
-    Route::post('logout', 'logout');
     Route::post('refresh', 'refresh');
-    Route::get('me', 'me');
+    
 });
 
 
 Route::middleware('auth:api')->group(function () {
+    // user routes
+    Route::get('me', [AuthController::class, 'me']);
+    Route::post('logout', [AuthController::class, 'logout']);
+
     // case routes
     Route::apiResource('/case', AllCaseController::class);
     Route::get('/case/user/all-cases', [AllCaseController::class, 'userCases']);

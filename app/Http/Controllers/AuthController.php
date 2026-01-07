@@ -105,7 +105,7 @@ class AuthController extends Controller
 
     public function logout()
     {
-        auth()->logout();
+        auth('api')->logout();
         
         return $this->successResponse(
             null,
@@ -113,9 +113,61 @@ class AuthController extends Controller
         );
     }
 
+    // public function me()
+    // {
+    //     $user = auth('api')->user()->with(['subscription'])->get();
+    //     return $user;
+    // }
+
     public function me()
     {
-        return response()->json(auth()->user());
+        $user = auth('api')->user();
+        
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized'
+            ], 401);
+        }
+
+        // Load relationships
+        $user->load(['subscription', 'currentUsage']);
+
+        // Get plan configuration
+        $planTier = $user->subscription?->plan_tier ?? 'free';
+        $planConfig = config("plans.{$planTier}", config('plans.free'));
+
+        // Get current usage
+        $currentUsage = $user->currentUsage;
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'account_status' => $user->account_status,
+                'email_verified_at' => $user->email_verified_at,
+                'member_since' => $user->created_at->format('M Y'),
+                'subscription' => $user->subscription ? [
+                    'id' => $user->subscription->id,
+                    'plan_tier' => $user->subscription->plan_tier,
+                    'plan_name' => $planConfig['name'],
+                    'status' => $user->subscription->status,
+                    'started_at' => $user->subscription->started_at,
+                    'ends_at' => $user->subscription->ends_at,
+                ] : null,
+                'usage' => [
+                    'messages_used' => $currentUsage?->messages_used ?? 0,
+                    'messages_limit' => $planConfig['messages_limit'],
+                    'documents_used' => $currentUsage?->documents_generated ?? 0,
+                    'documents_limit' => $planConfig['documents_limit'],
+                    'cases_used' => $currentUsage?->cases_created ?? 0,
+                    'cases_limit' => $planConfig['cases_limit'],
+                    'billing_cycle_date' => $currentUsage?->billing_cycle_date ?? today()->format('Y-m-01'),
+                ],
+            ]
+        ]);
     }
 
     public function refresh()
