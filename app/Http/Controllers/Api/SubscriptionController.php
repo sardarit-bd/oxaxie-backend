@@ -20,6 +20,7 @@ class SubscriptionController extends Controller
 
     /**
      * Store or update a user's subscription
+     * Now with fresh start logic - cancels old subscription when new one is purchased
      */
     public function storeOrUpdate(Request $request): JsonResponse
     {
@@ -50,8 +51,13 @@ class SubscriptionController extends Controller
 
             $statusCode = $result['was_created'] ? 201 : 200;
 
+            $responseData = [
+                'subscription' => $result['subscription'],
+                'old_subscription_cancelled' => $result['old_subscription_cancelled'] ?? false,
+            ];
+
             return $this->successResponse(
-                $result['subscription'],
+                $responseData,
                 $result['message'],
                 $statusCode
             );
@@ -59,6 +65,44 @@ class SubscriptionController extends Controller
             return $this->errorResponse($e->getMessage(), 400);
         }
     }
+    // public function storeOrUpdate(Request $request): JsonResponse
+    // {
+    //     $validator = Validator::make($request->all(), [
+    //         'plan_tier' => 'required|in:free,pro,pro_plus',
+    //         'status' => 'required|in:active,cancelled,expired,past_due',
+    //         'monthly_price' => 'required|numeric|min:0',
+    //         'current_period_start' => 'required|date',
+    //         'current_period_end' => 'required|date|after_or_equal:current_period_start',
+    //         'stripe_subscription_id' => 'required|string',
+    //         'stripe_customer_id' => 'nullable|string',
+    //         'cancelled_at' => 'nullable|date',
+    //     ]);
+
+    //     if ($validator->fails()) {
+    //         return $this->errorResponse(
+    //             'Validation error',
+    //             422,
+    //             $validator->errors()
+    //         );
+    //     }
+
+    //     try {
+    //         $result = $this->subscriptionService->storeOrUpdate(
+    //             $request->user()->id,
+    //             $validator->validated()
+    //         );
+
+    //         $statusCode = $result['was_created'] ? 201 : 200;
+
+    //         return $this->successResponse(
+    //             $result['subscription'],
+    //             $result['message'],
+    //             $statusCode
+    //         );
+    //     } catch (Exception $e) {
+    //         return $this->errorResponse($e->getMessage(), 400);
+    //     }
+    // }
 
     /**
      * Get user's subscription

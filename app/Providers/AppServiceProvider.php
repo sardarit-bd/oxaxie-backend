@@ -48,7 +48,8 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(SubscriptionService::class, function ($app) {
             return new SubscriptionService(
-                $app->make(SubscriptionRepository::class)
+                $app->make(SubscriptionRepository::class),
+                $app->make(UsageTrackingRepository::class)
             );
         });
 

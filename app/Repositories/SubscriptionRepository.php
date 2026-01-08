@@ -71,11 +71,16 @@ class SubscriptionRepository
     /**
      * Cancel subscription
      */
-    public function cancel(Subscription $subscription): bool
+    /**
+     * Cancel subscription
+     */
+    public function cancel(Subscription $subscription): Subscription
     {
-        return $subscription->update([
+        $subscription->update([
             'status' => 'cancelled',
-            'cancelled_at' => now()
+            'cancelled_at' => now(),
         ]);
+
+        return $subscription;
     }
 }

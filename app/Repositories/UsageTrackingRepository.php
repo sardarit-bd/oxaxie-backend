@@ -8,6 +8,17 @@ use Illuminate\Support\Str;
 
 class UsageTrackingRepository
 {
+
+    /**
+     * Create new usage tracking record
+     */
+    public function create(array $data): UsageTracking
+    {
+        return UsageTracking::create(array_merge($data, [
+            'id' => Str::uuid(),
+        ]));
+    }
+    
     /**
      * Find usage tracking by ID for specific user
      */

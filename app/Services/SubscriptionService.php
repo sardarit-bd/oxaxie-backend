@@ -2,64 +2,210 @@
 
 namespace App\Services;
 
-use App\Repositories\SubscriptionRepository;
-use App\Models\Subscription;
 use Exception;
+use Carbon\Carbon;
+use App\Models\Subscription;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use App\Repositories\SubscriptionRepository;
+use App\Repositories\UsageTrackingRepository;
 
 class SubscriptionService
 {
     public function __construct(
-        protected SubscriptionRepository $subscriptionRepository
+        protected SubscriptionRepository $subscriptionRepository,
+        protected UsageTrackingRepository $usageTrackingRepository
     ) {}
 
     /**
-     * Store or update a user's subscription
-     * This follows the pattern: One subscription per user
+     * Store or update a user's subscription with fresh start logic
+     * When a new subscription is purchased:
+     * - Cancels old active subscription
+     * - Creates new subscription
+     * - Resets usage tracking (creates new record for new billing cycle)
      */
     public function storeOrUpdate(string $userId, array $data): array
     {
-        // Check if subscription exists by user or stripe ID
-        $subscription = $this->subscriptionRepository->findByUserOrStripeId(
-            $userId,
-            $data['stripe_subscription_id']
-        );
+        DB::beginTransaction();
 
-        $wasRecentlyCreated = false;
+        try {
+            Log::info('=== Starting storeOrUpdate ===', [
+                'user_id' => $userId,
+                'plan_tier' => $data['plan_tier'] ?? 'unknown',
+                'stripe_subscription_id' => $data['stripe_subscription_id'] ?? 'unknown'
+            ]);
 
-        if ($subscription) {
-            // Update existing subscription
-            $this->subscriptionRepository->update($subscription, $data);
-            $subscription = $subscription->fresh();
-            $message = 'Subscription updated successfully';
-        } else {
-            // Create new subscription
+            // Step 1: Find any existing active subscription for this user
+            $oldSubscription = $this->subscriptionRepository->getActiveByUserId($userId);
+            
+            $wasRecentlyCreated = false;
+            $oldSubscriptionCancelled = false;
+
+            // Step 2: Check if this is a duplicate/update of same Stripe subscription
+            $existingStripeSubscription = null;
+            if (isset($data['stripe_subscription_id'])) {
+                $existingStripeSubscription = Subscription::where('stripe_subscription_id', $data['stripe_subscription_id'])->first();
+            }
+
+            // If we found a subscription with same Stripe ID, this is an UPDATE not a new purchase
+            if ($existingStripeSubscription) {
+                Log::info('Updating existing subscription', [
+                    'user_id' => $userId,
+                    'subscription_id' => $existingStripeSubscription->id,
+                    'stripe_subscription_id' => $data['stripe_subscription_id']
+                ]);
+
+                $existingStripeSubscription->update($data);
+                $subscription = $existingStripeSubscription->fresh();
+                $message = 'Subscription updated successfully';
+                
+                DB::commit();
+                
+                return [
+                    'subscription' => $subscription,
+                    'message' => $message,
+                    'was_created' => false,
+                    'old_subscription_cancelled' => false,
+                ];
+            }
+
+            // Step 3: This is a NEW subscription purchase
+            // Cancel old subscription if exists and is different
+            if ($oldSubscription && $oldSubscription->stripe_subscription_id !== $data['stripe_subscription_id']) {
+                Log::info('Cancelling old subscription for fresh start', [
+                    'user_id' => $userId,
+                    'old_subscription_id' => $oldSubscription->id,
+                    'old_plan_tier' => $oldSubscription->plan_tier,
+                    'new_plan_tier' => $data['plan_tier']
+                ]);
+
+                // Cancel the old subscription
+                $oldSubscription->update([
+                    'status' => 'cancelled',
+                    'cancelled_at' => now(),
+                ]);
+                $oldSubscriptionCancelled = true;
+
+                Log::info('Old subscription cancelled', [
+                    'old_subscription_id' => $oldSubscription->id,
+                    'cancelled_at' => $oldSubscription->cancelled_at
+                ]);
+            }
+
+            // Step 4: Create new subscription
             $subscriptionData = array_merge($data, [
                 'user_id' => $userId,
+                'id' => \Illuminate\Support\Str::uuid(),
             ]);
             
-            $subscription = $this->subscriptionRepository->create($subscriptionData);
-            $wasRecentlyCreated = true;
-            $message = 'Subscription created successfully';
-        }
+            Log::info('Creating new subscription', [
+                'user_id' => $userId,
+                'plan_tier' => $data['plan_tier'],
+                'stripe_subscription_id' => $data['stripe_subscription_id']
+            ]);
 
-        return [
-            'subscription' => $subscription,
-            'message' => $message,
-            'was_created' => $wasRecentlyCreated,
-        ];
+            $subscription = Subscription::create($subscriptionData);
+            $wasRecentlyCreated = true;
+
+            Log::info('New subscription created', ['subscription_id' => $subscription->id]);
+
+            // Step 5: Create fresh usage tracking record for new billing cycle
+            try {
+                $billingCycleDate = Carbon::today()->toDateString();
+                
+                Log::info('Attempting to create/update usage tracking', [
+                    'user_id' => $userId,
+                    'subscription_id' => $subscription->id,
+                    'billing_cycle_date' => $billingCycleDate
+                ]);
+
+                // Try to find existing usage tracking for today
+                $existingUsage = \App\Models\UsageTracking::where('user_id', $userId)
+                    ->where('billing_cycle_date', $billingCycleDate)
+                    ->first();
+                
+                if ($existingUsage) {
+                    Log::info('Updating existing usage tracking', ['usage_id' => $existingUsage->id]);
+                    // Update existing record
+                    $existingUsage->update([
+                        'subscription_id' => $subscription->id,
+                        'messages_used' => 0,
+                        'documents_generated' => 0,
+                        'cases_created' => 0,
+                        'ai_cost_accumulated' => 0.0000,
+                        'input_tokens_used' => 0,
+                        'output_tokens_used' => 0,
+                        'cost_threshold_reached' => false,
+                    ]);
+                } else {
+                    Log::info('Creating new usage tracking record');
+                    // Create new record directly using model
+                    \App\Models\UsageTracking::create([
+                        'id' => \Illuminate\Support\Str::uuid(),
+                        'user_id' => $userId,
+                        'subscription_id' => $subscription->id,
+                        'billing_cycle_date' => $billingCycleDate,
+                        'messages_used' => 0,
+                        'documents_generated' => 0,
+                        'cases_created' => 0,
+                        'ai_cost_accumulated' => 0.0000,
+                        'input_tokens_used' => 0,
+                        'output_tokens_used' => 0,
+                        'cost_threshold_reached' => false,
+                    ]);
+                }
+
+                Log::info('Usage tracking created/updated successfully');
+
+            } catch (Exception $usageError) {
+                Log::error('Failed to create/update usage tracking', [
+                    'error' => $usageError->getMessage(),
+                    'trace' => $usageError->getTraceAsString()
+                ]);
+                // Don't fail the whole transaction if usage tracking fails
+                // We can create it later
+            }
+
+            $message = $oldSubscriptionCancelled 
+                ? 'New subscription created successfully. Previous subscription has been cancelled.' 
+                : 'Subscription created successfully';
+
+            DB::commit();
+
+            Log::info('=== Subscription creation completed successfully ===', [
+                'user_id' => $userId,
+                'new_subscription_id' => $subscription->id,
+                'old_subscription_cancelled' => $oldSubscriptionCancelled
+            ]);
+
+            return [
+                'subscription' => $subscription,
+                'message' => $message,
+                'was_created' => $wasRecentlyCreated,
+                'old_subscription_cancelled' => $oldSubscriptionCancelled,
+            ];
+
+        } catch (Exception $e) {
+            DB::rollBack();
+            
+            Log::error('=== Subscription store/update FAILED ===', [
+                'user_id' => $userId,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            throw $e;
+        }
     }
 
-    /**
-     * Get user's subscription
-     */
+    // Keep all other existing methods unchanged
     public function getUserSubscription(string $userId): ?Subscription
     {
         return $this->subscriptionRepository->findByUserId($userId);
     }
 
-    /**
-     * Get active subscription for user
-     */
     public function getActiveSubscription(string $userId): ?Subscription
     {
         $subscription = $this->subscriptionRepository->getActiveByUserId($userId);
@@ -71,9 +217,6 @@ class SubscriptionService
         return $subscription;
     }
 
-    /**
-     * Update subscription
-     */
     public function updateSubscription(string $userId, array $data): Subscription
     {
         $subscription = $this->subscriptionRepository->findByUserId($userId);
@@ -87,9 +230,6 @@ class SubscriptionService
         return $subscription->fresh();
     }
 
-    /**
-     * Cancel subscription
-     */
     public function cancelSubscription(string $userId): Subscription
     {
         $subscription = $this->subscriptionRepository->findByUserId($userId);
@@ -103,9 +243,6 @@ class SubscriptionService
         return $subscription->fresh();
     }
 
-    /**
-     * Delete subscription
-     */
     public function deleteSubscription(string $userId): bool
     {
         $subscription = $this->subscriptionRepository->findByUserId($userId);
@@ -117,18 +254,12 @@ class SubscriptionService
         return $this->subscriptionRepository->delete($subscription);
     }
 
-    /**
-     * Check if user has active subscription
-     */
     public function hasActiveSubscription(string $userId): bool
     {
         $subscription = $this->subscriptionRepository->getActiveByUserId($userId);
         return $subscription !== null;
     }
 
-    /**
-     * Get subscription by Stripe subscription ID
-     */
     public function getByStripeId(string $stripeSubscriptionId): ?Subscription
     {
         return $this->subscriptionRepository->findByStripeSubscriptionId($stripeSubscriptionId);
