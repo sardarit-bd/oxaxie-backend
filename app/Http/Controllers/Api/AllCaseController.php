@@ -224,7 +224,7 @@ class AllCaseController extends Controller
     public function userCases()
     {
         return $this->successResponse(
-            auth('api')->user()->cases()->with(['caseDocuments'])->simplePaginate(10),
+            auth('api')->user()->cases()->with(['caseDocuments'])->latest()->simplePaginate(10),
             'User cases retrieved successfully',
             200
         );

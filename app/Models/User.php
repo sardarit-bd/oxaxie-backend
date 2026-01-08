@@ -82,7 +82,7 @@ class User extends Authenticatable implements JWTSubject
     public function currentUsage(): HasOne
     {
         return $this->hasOne(UsageTracking::class)
-            ->where('billing_cycle_date', today()->format('Y-m-01'));
+            ->where('billing_cycle_date', today()->format('Y-m-d'));
     }
 
     public function creditPurchases(): HasMany

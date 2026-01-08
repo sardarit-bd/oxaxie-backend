@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Resources\RegisterUserResource;
+use Exception;
 use App\Models\User;
-use App\Services\UserSetupService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
+use App\Services\UserSetupService;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
-use Exception;
+use App\Http\Resources\RegisterUserResource;
 
 class AuthController extends Controller
 {
@@ -133,13 +134,24 @@ class AuthController extends Controller
         // Load relationships
         $user->load(['subscription', 'currentUsage']);
 
-        // Get plan configuration
+        // Debug: Check if currentUsage is loaded
+        Log::info('Current Usage Data', [
+            'user_id' => $user->id,
+            'current_usage' => $user->currentUsage,
+            'current_usage_exists' => $user->currentUsage !== null,
+            'messages_used' => $user->currentUsage?->messages_used,
+            'today_date' => today()->format('Y-m-01'),
+        ]);
+
+        // Get plan tier
         $planTier = $user->subscription?->plan_tier ?? 'free';
-        $planConfig = config("plans.{$planTier}", config('plans.free'));
+        
+        // Use the AI cost calculator service to get limits
+        $aiCostCalculator = app(\App\Services\AiCostCalculatorService::class);
 
-        // Get current usage
+        // Get current usage with better null handling
         $currentUsage = $user->currentUsage;
-
+        
         return response()->json([
             'success' => true,
             'data' => [
@@ -152,18 +164,17 @@ class AuthController extends Controller
                 'subscription' => $user->subscription ? [
                     'id' => $user->subscription->id,
                     'plan_tier' => $user->subscription->plan_tier,
-                    'plan_name' => $planConfig['name'],
                     'status' => $user->subscription->status,
                     'started_at' => $user->subscription->started_at,
                     'ends_at' => $user->subscription->ends_at,
                 ] : null,
                 'usage' => [
                     'messages_used' => $currentUsage?->messages_used ?? 0,
-                    'messages_limit' => $planConfig['messages_limit'],
+                    'messages_limit' => $aiCostCalculator->getMessageLimit($planTier),
                     'documents_used' => $currentUsage?->documents_generated ?? 0,
-                    'documents_limit' => $planConfig['documents_limit'],
+                    'documents_limit' => $aiCostCalculator->getDocumentLimit($planTier),
                     'cases_used' => $currentUsage?->cases_created ?? 0,
-                    'cases_limit' => $planConfig['cases_limit'],
+                    'cases_limit' => $aiCostCalculator->getCaseLimit($planTier),
                     'billing_cycle_date' => $currentUsage?->billing_cycle_date ?? today()->format('Y-m-01'),
                 ],
             ]
