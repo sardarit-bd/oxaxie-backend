@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\CaseDocumentController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\UsageTrackingController;
 use App\Http\Controllers\Api\CreditPurchaseController;
+use App\Http\Controllers\Api\ResponseFeedbackController;
 
 Route::controller(AuthController::class)->group(function () {
     Route::post('register', 'register');
@@ -118,6 +119,27 @@ Route::middleware('auth:api')->group(function () {
         
         // Threshold management
         Route::post('/check-threshold', [UsageTrackingController::class, 'checkCostThreshold']);
+
+    });
+
+    // ============================================
+    // RESPONSE FEEDBACK ROUTES
+    // ============================================
+    Route::prefix('feedback')->group(function () {
+        Route::post('/cases/{caseId}/feedback', [ResponseFeedbackController::class, 'store']);
+        
+        Route::get('/cases/{caseId}/feedback', [ResponseFeedbackController::class, 'index']);
+
+        Route::get('/cases/{caseId}/feedback/statistics', [ResponseFeedbackController::class, 'statistics']);
+        
+        // Single feedback operations
+        Route::get('/{id}', [ResponseFeedbackController::class, 'show']);
+        Route::put('/{id}', [ResponseFeedbackController::class, 'update']);
+        Route::delete('/{id}', [ResponseFeedbackController::class, 'destroy']);
+        
+        Route::post('/{id}/analyze', [ResponseFeedbackController::class, 'analyzeWithAI']);
+
+        Route::post('/{feedbackId}/documents', [CaseDocumentController::class, 'uploadToFeedback']);
     });
 
 

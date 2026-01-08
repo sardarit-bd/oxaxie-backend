@@ -3,13 +3,15 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class ResponseFeedback extends Model
 {
-    use HasFactory, HasUuids;
+    use HasFactory, HasUuids, SoftDeletes;
 
     protected $table = 'response_feedback';
 
@@ -23,18 +25,26 @@ class ResponseFeedback extends Model
         'days_to_response',
         'ai_analyzed',
         'ai_analysis',
+        'ai_next_steps',
+        'escalation_options',
+        'urgency_level',
+        'recommended_deadline',
+        'status',
     ];
 
     protected $casts = [
         'response_date' => 'date',
         'action_taken_date' => 'date',
+        'recommended_deadline' => 'date',
         'days_to_response' => 'integer',
         'ai_analyzed' => 'boolean',
+        'escalation_options' => 'array',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'deleted_at' => 'datetime',
     ];
 
-    // Relationships
+
     public function case(): BelongsTo
     {
         return $this->belongsTo(AllCase::class, 'all_case_id');
@@ -45,7 +55,16 @@ class ResponseFeedback extends Model
         return $this->belongsTo(User::class);
     }
 
-    // Helper methods
+    public function caseDocuments(): HasMany
+    {
+        return $this->hasMany(CaseDocument::class, 'response_feedback_id');
+    }
+    
+    public function documents(): HasMany
+    {
+        return $this->caseDocuments();
+    }
+
     public function calculateDaysToResponse(): void
     {
         if ($this->action_taken_date && $this->response_date) {
@@ -77,5 +96,16 @@ class ResponseFeedback extends Model
     public function isCounterOffer(): bool
     {
         return $this->response_type === 'counter_offer';
+    }
+
+    public function isUrgent(): bool
+    {
+        return in_array($this->urgency_level, ['high', 'critical']);
+    }
+
+    public function hasPassedDeadline(): bool
+    {
+        return $this->recommended_deadline && 
+               $this->recommended_deadline->isPast();
     }
 }

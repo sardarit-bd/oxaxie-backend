@@ -2,14 +2,17 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\ServiceProvider;
-use App\Repositories\CreditPurchaseRepository;
-use App\Repositories\UsageTrackingRepository;
-use App\Repositories\SubscriptionRepository;
-use App\Services\CreditPurchaseService;
-use App\Services\UsageTrackingService;
-use App\Services\SubscriptionService;
+use App\Services\AiChatService;
 use App\Services\UserSetupService;
+use App\Services\SubscriptionService;
+use App\Services\UsageTrackingService;
+use App\Services\CreditPurchaseService;
+use Illuminate\Support\ServiceProvider;
+use App\Services\ResponseFeedbackService;
+use App\Repositories\SubscriptionRepository;
+use App\Repositories\UsageTrackingRepository;
+use App\Repositories\CreditPurchaseRepository;
+use App\Repositories\ResponseFeedbackRepository;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -50,6 +53,13 @@ class AppServiceProvider extends ServiceProvider
             return new SubscriptionService(
                 $app->make(SubscriptionRepository::class),
                 $app->make(UsageTrackingRepository::class)
+            );
+        });
+
+        $this->app->bind(ResponseFeedbackService::class, function ($app) {
+            return new ResponseFeedbackService(
+                $app->make(ResponseFeedbackRepository::class),
+                $app->make(AiChatService::class)
             );
         });
 

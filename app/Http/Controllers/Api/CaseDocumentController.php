@@ -2,12 +2,17 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use App\Models\CaseDocument;
-use App\Services\FileUploadService;
+use Exception;
 use App\Traits\ApiResponse;
+use Illuminate\Support\Str;
+use App\Models\CaseDocument;
 use Illuminate\Http\Request;
+use App\Models\ResponseFeedback;
+use App\Services\FileUploadService;
+use Illuminate\Support\Facades\Log;
+use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CaseDocumentController extends Controller
@@ -23,14 +28,14 @@ class CaseDocumentController extends Controller
      */
     public function download(CaseDocument $document): StreamedResponse
     {
-        $user = auth()->user();
+        $user = auth('api')->user();
 
-        // Check authorization
+ 
         if ($document->user_id !== $user->id) {
             abort(403, 'Unauthorized access to document');
         }
 
-        // Check if file exists
+
         if (!Storage::disk('private')->exists($document->file_path)) {
             abort(404, 'File not found');
         }
@@ -46,9 +51,8 @@ class CaseDocumentController extends Controller
      */
     public function destroy(CaseDocument $document)
     {
-        $user = auth()->user();
+        $user = auth('api')->user();
 
-        // Check authorization
         if ($document->user_id !== $user->id) {
             return $this->errorResponse('Unauthorized', 403);
         }
@@ -78,12 +82,12 @@ class CaseDocumentController extends Controller
     {
         $user = auth('api')->user();
 
-        // Check authorization
+
         if ($document->user_id !== $user->id) {
             abort(403, 'Unauthorized access to document');
         }
 
-        // Check if file exists
+
         if (!Storage::disk('private')->exists($document->file_path)) {
             abort(404, 'File not found');
         }
@@ -96,13 +100,91 @@ class CaseDocumentController extends Controller
     }
 
     /**
+     * Upload documents to response feedback
+     * POST /api/feedback/{feedbackId}/documents
+     */
+    public function uploadToFeedback(Request $request, string $feedbackId)
+    {
+        $validator = Validator::make($request->all(), [
+            'documents' => 'required|array|min:1|max:5',
+            'documents.*' => 'required|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:10240', // 10MB max
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse(
+                'Validation error',
+                422,
+                $validator->errors()
+            );
+        }
+
+        try {
+            $user = $request->user();
+            
+            $feedback = ResponseFeedback::where('id', $feedbackId)
+                ->where('user_id', $user->id)
+                ->first();
+
+            if (!$feedback) {
+                return $this->errorResponse('Response feedback not found', 404);
+            }
+
+            $uploadedDocuments = [];
+
+            foreach ($request->file('documents') as $file) {
+                $originalName = $file->getClientOriginalName();
+                $storedName = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+                $path = $file->storeAs('response_feedback_documents', $storedName, 'public');
+
+                $document = CaseDocument::create([
+                    'id' => Str::uuid(),
+                    'all_case_id' => $feedback->all_case_id,
+                    'response_feedback_id' => $feedbackId,
+                    'user_id' => $user->id,
+                    'original_name' => $originalName,
+                    'stored_name' => $storedName,
+                    'file_path' => $path,
+                    'mime_type' => $file->getMimeType(),
+                    'file_size' => $file->getSize(),
+                    'document_type' => 'other',
+                ]);
+
+                $uploadedDocuments[] = $document;
+            }
+
+            Log::info('Documents uploaded to response feedback', [
+                'feedback_id' => $feedbackId,
+                'user_id' => $user->id,
+                'count' => count($uploadedDocuments)
+            ]);
+
+            return $this->successResponse(
+                $uploadedDocuments,
+                'Documents uploaded successfully',
+                201
+            );
+
+        } catch (Exception $e) {
+            Log::error('Document upload failed', [
+                'feedback_id' => $feedbackId,
+                'error' => $e->getMessage()
+            ]);
+
+            return $this->errorResponse(
+                'Failed to upload documents',
+                500,
+                ['error' => $e->getMessage()]
+            );
+        }
+    }
+
+    /**
      * Upload additional documents to existing case.
      */
     public function uploadToCaseAdditional(Request $request, string $caseId)
     {
         $user = $request->user();
-        
-        // Find case
+
         $case = $user->cases()->find($caseId);
         if (!$case) {
             return $this->errorResponse('Case not found', 404);
@@ -120,12 +202,12 @@ class CaseDocumentController extends Controller
 
         try {
             $files = $request->file('documents');
-            // Pass the case's issue_type
+
             $uploadResult = $this->fileUploadService->uploadMultipleFiles(
                 $files,
                 $case->id,
                 $user->id,
-                $case->issue_type // Pass the case's issue_type
+                $case->issue_type
             );
 
             return $this->successResponse(
