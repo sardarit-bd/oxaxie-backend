@@ -30,6 +30,7 @@ class ResponseFeedback extends Model
         'urgency_level',
         'recommended_deadline',
         'status',
+        'sent_to_chat',
     ];
 
     protected $casts = [
@@ -42,6 +43,7 @@ class ResponseFeedback extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
+        'sent_to_chat' => 'boolean',
     ];
 
 
@@ -63,6 +65,11 @@ class ResponseFeedback extends Model
     public function documents(): HasMany
     {
         return $this->caseDocuments();
+    }
+
+    public function chatMessages()
+    {
+        return $this->hasMany(ChatMessage::class);
     }
 
     public function calculateDaysToResponse(): void

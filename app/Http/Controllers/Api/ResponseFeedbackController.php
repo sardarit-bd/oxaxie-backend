@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers\Api;
 
+use Exception;
 use App\Traits\ApiResponse;
+use Illuminate\Http\Request;
+use App\Models\ResponseFeedback;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use App\Services\ResponseFeedbackService;
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Log;
-use Exception;
 
 class ResponseFeedbackController extends Controller
 {
@@ -289,5 +290,30 @@ class ResponseFeedbackController extends Controller
                 500
             );
         }
+    }
+
+    // Get pending feedback that hasn't been sent to chat yet
+    public function getPendingFeedback($caseId)
+    {
+        $user = auth('api')->user();
+
+        $feedback = ResponseFeedback::with('documents')
+            ->where('all_case_id', $caseId)
+            ->where('user_id', $user->id)
+            ->where('sent_to_chat', false)
+            ->latest('created_at')
+            ->first();
+
+        if (!$feedback) {
+            return response()->json([
+                'success' => true,
+                'data' => null
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $feedback
+        ]);
     }
 }

@@ -2,21 +2,22 @@
 
 namespace App\Http\Controllers\Api;
 
+use Exception;
+use Carbon\Carbon;
 use App\Models\AllCase;
 use App\Models\ChatMessage;
-use App\Services\AiChatService;
-use App\Services\AiCostCalculatorService;
-use App\Services\SubscriptionLimitService;
-use App\Services\UsageTrackingService;
-use App\Repositories\SubscriptionRepository;
+use App\Traits\ApiResponse;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
+use App\Services\AiChatService;
+use App\Models\ResponseFeedback;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
-use App\Traits\ApiResponse;
-use Carbon\Carbon;
-use Exception;
+use App\Services\UsageTrackingService;
+use App\Services\AiCostCalculatorService;
+use App\Services\SubscriptionLimitService;
+use App\Repositories\SubscriptionRepository;
 
 class ChatMessageController extends Controller
 {
@@ -35,6 +36,234 @@ class ChatMessageController extends Controller
      * This is the main endpoint for chat functionality
      */
 
+    // public function sendMessage(Request $request)
+    // {
+    //     Log::info('=== Chat Send Request ===');
+    //     Log::info('Request data:', $request->all());
+        
+    //     $validated = $request->validate([
+    //         'all_case_id' => 'required|uuid|exists:all_cases,id',
+    //         'message' => 'required|string|min:1',
+    //         'messages' => 'sometimes|array',
+    //         'system_prompt' => 'sometimes|string',
+    //     ]);
+
+    //     $user = $request->user();
+    //     $caseId = $validated['all_case_id'];
+    //     $userMessage = $validated['message'];
+
+    //     Log::info('Validated data:', [
+    //         'has_messages' => isset($validated['messages']),
+    //         'has_system_prompt' => isset($validated['system_prompt']),
+    //         'messages_count' => isset($validated['messages']) ? count($validated['messages']) : 0
+    //     ]);
+
+      
+    //     if (isset($validated['messages'])) {
+    //         $lastMessage = end($validated['messages']);
+    //         Log::info('Last message in array:', [
+    //             'role' => $lastMessage['role'] ?? null,
+    //             'content_type' => gettype($lastMessage['content'] ?? null),
+    //             'content_is_array' => is_array($lastMessage['content'] ?? null),
+    //         ]);
+            
+    //         if (is_array($lastMessage['content'] ?? null)) {
+    //             Log::info('Content structure:', [
+    //                 'item_count' => count($lastMessage['content']),
+    //                 'items' => array_map(function($item) {
+    //                     return [
+    //                         'type' => $item['type'] ?? 'unknown',
+    //                         'has_source' => isset($item['source']),
+    //                         'has_text' => isset($item['text']),
+    //                         'source_type' => $item['source']['type'] ?? null,
+    //                         'media_type' => $item['source']['media_type'] ?? null,
+    //                         'data_length' => isset($item['source']['data']) ? strlen($item['source']['data']) : 0
+    //                     ];
+    //                 }, $lastMessage['content'])
+    //             ]);
+    //         }
+    //     }
+
+    //     try {
+    //         $case = AllCase::where('id', $caseId)
+    //             ->where('user_id', $user->id)
+    //             ->first();
+
+    //         if (!$case) {
+    //             return $this->errorResponse('Case not found or access denied', 404);
+    //         }
+
+    //         $limitCheck = $this->limitService->canSendMessage($user->id);
+            
+    //         if (!$limitCheck['allowed']) {
+    //             return $this->errorResponse(
+    //                 $limitCheck['reason'] ?? 'Chat limit reached',
+    //                 403,
+    //                 [
+    //                     'upgrade_required' => true,
+    //                     'current_plan' => $limitCheck['current_plan'] ?? null,
+    //                     'upgrade_to' => $limitCheck['upgrade_to'] ?? null,
+    //                     'limit_details' => [
+    //                         'limit' => $limitCheck['limit'] ?? null,
+    //                         'used' => $limitCheck['used'] ?? null,
+    //                         'threshold' => $limitCheck['threshold'] ?? null,
+    //                         'cost_accumulated' => $limitCheck['cost_accumulated'] ?? null,
+    //                     ]
+    //                 ]
+    //             );
+    //         }
+
+    //         $subscription = $this->subscriptionRepository->getActiveByUserId($user->id);
+    //         $planTier = $subscription->plan_tier ?? 'free';
+    //         $aiModel = $this->costCalculator->getModelForPlan($planTier);
+
+        
+    //         if (isset($validated['messages'])) {
+    //             Log::info('Using messages from frontend with images');
+    //             $conversationHistory = $validated['messages'];
+    //         } else {
+    //             Log::info('Building messages from database (no images)');
+    //             $conversationHistory = ChatMessage::where('all_case_id', $caseId)
+    //                 ->orderBy('created_at', 'asc')
+    //                 ->get()
+    //                 ->map(fn($msg) => [
+    //                     'role' => $msg->role,
+    //                     'content' => $msg->content
+    //                 ])
+    //                 ->toArray();
+    //         }
+
+    //         // Use system prompt from frontend if provided, otherwise build it
+    //         if (isset($validated['system_prompt'])) {
+    //             Log::info('Using system prompt from frontend');
+    //             $systemPrompt = $validated['system_prompt'];
+    //         } else {
+    //             Log::info('Building system prompt from case data');
+    //             $systemPrompt = $this->aiChatService->buildSystemPrompt([
+    //                 'issue_type' => $case->issue_type,
+    //                 'location_city' => $case->location_city,
+    //                 'location_state' => $case->location_state,
+    //                 'location_country' => $case->location_country,
+    //                 'situation_description' => $case->situation_description,
+    //             ]);
+    //         }
+
+    //         DB::beginTransaction();
+
+    //         try {
+    //             // Save user message to database
+    //             $userChatMessage = ChatMessage::create([
+    //                 'id' => Str::uuid(),
+    //                 'all_case_id' => $caseId,
+    //                 'user_id' => $user->id,
+    //                 'role' => 'user',
+    //                 'content' => $userMessage,
+    //                 'metadata' => [
+    //                     'timestamp' => now()->toISOString(),
+    //                 ],
+    //             ]);
+
+    //             // Generate AI response using the messages array (which may include images)
+    //             Log::info('Calling AI service with:', [
+    //                 'model' => $aiModel,
+    //                 'conversation_length' => count($conversationHistory),
+    //                 'has_system_prompt' => !empty($systemPrompt)
+    //             ]);
+
+    //             $aiResponse = $this->aiChatService->generateResponseWithMessages(
+    //                 $aiModel,
+    //                 $systemPrompt,
+    //                 $conversationHistory  // This now includes images if they were sent
+    //             );
+
+    //             // Calculate cost
+    //             $cost = $this->costCalculator->calculateCost(
+    //                 $aiModel,
+    //                 $aiResponse['input_tokens'],
+    //                 $aiResponse['output_tokens']
+    //             );
+
+    //             // Save AI response
+    //             $aiChatMessage = ChatMessage::create([
+    //                 'id' => Str::uuid(),
+    //                 'all_case_id' => $caseId,
+    //                 'user_id' => $user->id,
+    //                 'role' => 'assistant',
+    //                 'content' => $aiResponse['content'],
+    //                 'ai_model_used' => $aiModel,
+    //                 'input_tokens' => $aiResponse['input_tokens'],
+    //                 'output_tokens' => $aiResponse['output_tokens'],
+    //                 'cost' => $cost,
+    //                 'metadata' => [
+    //                     'timestamp' => now()->toISOString(),
+    //                 ],
+    //             ]);
+
+    //             // Track usage
+    //             $today = Carbon::today()->toDateString();
+                
+    //             $this->usageTrackingService->incrementUsage($user->id, [
+    //                 'billing_cycle_date' => $today,
+    //                 'messages_used' => 1,
+    //                 'input_tokens_used' => $aiResponse['input_tokens'],
+    //                 'output_tokens_used' => $aiResponse['output_tokens'],
+    //                 'ai_cost_accumulated' => $cost,
+    //             ]);
+
+    //             // Check threshold
+    //             $threshold = $this->costCalculator->getThreshold($planTier);
+    //             if ($threshold > 0) {
+    //                 $this->usageTrackingService->checkCostThreshold(
+    //                     $user->id,
+    //                     $today,
+    //                     $threshold
+    //                 );
+    //             }
+
+    //             DB::commit();
+
+    //             $usageWarning = $this->limitService->getUsageWarning($user->id);
+
+    //             return $this->successResponse([
+    //                 'user_message' => $userChatMessage,
+    //                 'ai_message' => $aiChatMessage,
+    //                 'usage_warning' => $usageWarning,
+    //                 'usage_info' => [
+    //                     'tokens_used' => $aiResponse['input_tokens'] + $aiResponse['output_tokens'],
+    //                     'cost' => $cost,
+    //                     'model' => $aiModel,
+    //                 ]
+    //             ], 'Message sent successfully', 201);
+
+    //         } catch (Exception $e) {
+    //             DB::rollBack();
+                
+    //             Log::error('Chat message processing failed', [
+    //                 'user_id' => $user->id,
+    //                 'case_id' => $caseId,
+    //                 'error' => $e->getMessage(),
+    //                 'trace' => $e->getTraceAsString()
+    //             ]);
+
+    //             return $this->errorResponse(
+    //                 'Failed to generate AI response. Please try again.',
+    //                 500,
+    //                 ['error_details' => $e->getMessage()]
+    //             );
+    //         }
+
+    //     } catch (Exception $e) {
+    //         Log::error('Chat endpoint error', [
+    //             'user_id' => $user->id,
+    //             'error' => $e->getMessage()
+    //         ]);
+
+    //         return $this->errorResponse(
+    //             'An error occurred while processing your message',
+    //             500
+    //         );
+    //     }
+    // }
     public function sendMessage(Request $request)
     {
         Log::info('=== Chat Send Request ===');
@@ -45,43 +274,13 @@ class ChatMessageController extends Controller
             'message' => 'required|string|min:1',
             'messages' => 'sometimes|array',
             'system_prompt' => 'sometimes|string',
+            'feedback_id' => 'sometimes|uuid|exists:response_feedback,id',
+            'feedback_documents' => 'sometimes|array',
         ]);
 
         $user = $request->user();
         $caseId = $validated['all_case_id'];
         $userMessage = $validated['message'];
-
-        Log::info('Validated data:', [
-            'has_messages' => isset($validated['messages']),
-            'has_system_prompt' => isset($validated['system_prompt']),
-            'messages_count' => isset($validated['messages']) ? count($validated['messages']) : 0
-        ]);
-
-      
-        if (isset($validated['messages'])) {
-            $lastMessage = end($validated['messages']);
-            Log::info('Last message in array:', [
-                'role' => $lastMessage['role'] ?? null,
-                'content_type' => gettype($lastMessage['content'] ?? null),
-                'content_is_array' => is_array($lastMessage['content'] ?? null),
-            ]);
-            
-            if (is_array($lastMessage['content'] ?? null)) {
-                Log::info('Content structure:', [
-                    'item_count' => count($lastMessage['content']),
-                    'items' => array_map(function($item) {
-                        return [
-                            'type' => $item['type'] ?? 'unknown',
-                            'has_source' => isset($item['source']),
-                            'has_text' => isset($item['text']),
-                            'source_type' => $item['source']['type'] ?? null,
-                            'media_type' => $item['source']['media_type'] ?? null,
-                            'data_length' => isset($item['source']['data']) ? strlen($item['source']['data']) : 0
-                        ];
-                    }, $lastMessage['content'])
-                ]);
-            }
-        }
 
         try {
             $case = AllCase::where('id', $caseId)
@@ -116,12 +315,11 @@ class ChatMessageController extends Controller
             $planTier = $subscription->plan_tier ?? 'free';
             $aiModel = $this->costCalculator->getModelForPlan($planTier);
 
-            // Use messages from frontend if provided, otherwise build from database
             if (isset($validated['messages'])) {
                 Log::info('Using messages from frontend with images');
                 $conversationHistory = $validated['messages'];
             } else {
-                Log::info('Building messages from database (no images)');
+                Log::info('Building messages from database');
                 $conversationHistory = ChatMessage::where('all_case_id', $caseId)
                     ->orderBy('created_at', 'asc')
                     ->get()
@@ -132,12 +330,10 @@ class ChatMessageController extends Controller
                     ->toArray();
             }
 
-            // Use system prompt from frontend if provided, otherwise build it
+
             if (isset($validated['system_prompt'])) {
-                Log::info('Using system prompt from frontend');
                 $systemPrompt = $validated['system_prompt'];
             } else {
-                Log::info('Building system prompt from case data');
                 $systemPrompt = $this->aiChatService->buildSystemPrompt([
                     'issue_type' => $case->issue_type,
                     'location_city' => $case->location_city,
@@ -150,7 +346,7 @@ class ChatMessageController extends Controller
             DB::beginTransaction();
 
             try {
-                // Save user message to database
+              
                 $userChatMessage = ChatMessage::create([
                     'id' => Str::uuid(),
                     'all_case_id' => $caseId,
@@ -159,30 +355,24 @@ class ChatMessageController extends Controller
                     'content' => $userMessage,
                     'metadata' => [
                         'timestamp' => now()->toISOString(),
+                        'feedback_id' => $validated['feedback_id'] ?? null, 
+                        'type' => isset($validated['feedback_id']) ? 'response_feedback' : 'normal', 
                     ],
                 ]);
 
-                // Generate AI response using the messages array (which may include images)
-                Log::info('Calling AI service with:', [
-                    'model' => $aiModel,
-                    'conversation_length' => count($conversationHistory),
-                    'has_system_prompt' => !empty($systemPrompt)
-                ]);
-
+  
                 $aiResponse = $this->aiChatService->generateResponseWithMessages(
                     $aiModel,
                     $systemPrompt,
-                    $conversationHistory  // This now includes images if they were sent
+                    $conversationHistory
                 );
 
-                // Calculate cost
                 $cost = $this->costCalculator->calculateCost(
                     $aiModel,
                     $aiResponse['input_tokens'],
                     $aiResponse['output_tokens']
                 );
 
-                // Save AI response
                 $aiChatMessage = ChatMessage::create([
                     'id' => Str::uuid(),
                     'all_case_id' => $caseId,
@@ -195,10 +385,16 @@ class ChatMessageController extends Controller
                     'cost' => $cost,
                     'metadata' => [
                         'timestamp' => now()->toISOString(),
+                        'feedback_id' => $validated['feedback_id'] ?? null, 
+                        'type' => isset($validated['feedback_id']) ? 'feedback_analysis' : 'normal', 
                     ],
                 ]);
 
-                // Track usage
+                if (isset($validated['feedback_id'])) {
+                    ResponseFeedback::where('id', $validated['feedback_id'])
+                        ->update(['sent_to_chat' => true]);
+                }
+
                 $today = Carbon::today()->toDateString();
                 
                 $this->usageTrackingService->incrementUsage($user->id, [
@@ -209,7 +405,7 @@ class ChatMessageController extends Controller
                     'ai_cost_accumulated' => $cost,
                 ]);
 
-                // Check threshold
+
                 $threshold = $this->costCalculator->getThreshold($planTier);
                 if ($threshold > 0) {
                     $this->usageTrackingService->checkCostThreshold(

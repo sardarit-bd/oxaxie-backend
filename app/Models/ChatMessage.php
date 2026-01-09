@@ -14,6 +14,7 @@ class ChatMessage extends Model
     protected $fillable = [
         'all_case_id',
         'user_id',
+        'response_feedback_id',
         'role',
         'content',
         'ai_model_used',
@@ -32,7 +33,7 @@ class ChatMessage extends Model
         'updated_at' => 'datetime',
     ];
 
-    // Relationships
+
     public function case(): BelongsTo
     {
         return $this->belongsTo(AllCase::class, 'all_case_id');
@@ -43,7 +44,11 @@ class ChatMessage extends Model
         return $this->belongsTo(User::class);
     }
 
-    // Helper methods
+    public function responseFeedback()
+    {
+        return $this->belongsTo(ResponseFeedback::class);
+    }
+
     public function isUserMessage(): bool
     {
         return $this->role === 'user';

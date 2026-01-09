@@ -127,10 +127,9 @@ Route::middleware('auth:api')->group(function () {
     // ============================================
     Route::prefix('feedback')->group(function () {
         Route::post('/cases/{caseId}/feedback', [ResponseFeedbackController::class, 'store']);
-        
         Route::get('/cases/{caseId}/feedback', [ResponseFeedbackController::class, 'index']);
-
         Route::get('/cases/{caseId}/feedback/statistics', [ResponseFeedbackController::class, 'statistics']);
+        Route::get('/cases/{caseId}/pending-feedback', [ResponseFeedbackController::class, 'getPendingFeedback']);
         
         // Single feedback operations
         Route::get('/{id}', [ResponseFeedbackController::class, 'show']);
