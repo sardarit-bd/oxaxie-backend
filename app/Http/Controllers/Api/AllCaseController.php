@@ -2,17 +2,18 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use App\Http\Requests\Api\AllCaseRequest;
-use App\Services\SubscriptionLimitService;
-use App\Services\UsageTrackingService;
-use App\Services\FileUploadService;
+use Exception;
+use Carbon\Carbon;
+use App\Models\AllCase;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Services\FileUploadService;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
-use Exception;
+use App\Http\Controllers\Controller;
+use App\Services\UsageTrackingService;
+use App\Http\Requests\Api\AllCaseRequest;
+use App\Services\SubscriptionLimitService;
 
 class AllCaseController extends Controller
 {
@@ -279,5 +280,44 @@ class AllCaseController extends Controller
             'Case deleted successfully',
             200
         );
+    }
+
+    public function markAsResolved(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            
+            $case = AllCase::where('id', $id)
+                ->where('user_id', $user->id)
+                ->first();
+
+            if (!$case) {
+                return $this->errorResponse('Case not found or access denied', 404);
+            }
+
+            if ($case->status === 'resolved') {
+                return $this->errorResponse('Case is already marked as resolved', 400);
+            }
+
+            $case->status = 'resolved';
+            $case->save();
+
+            Log::info('Case marked as resolved', [
+                'case_id' => $id,
+                'user_id' => $user->id
+            ]);
+
+            return $this->successResponse([
+                'case' => $case
+            ], 'Case marked as resolved successfully');
+
+        } catch (Exception $e) {
+            Log::error('Failed to mark case as resolved', [
+                'case_id' => $id,
+                'error' => $e->getMessage()
+            ]);
+
+            return $this->errorResponse('Failed to update case status', 500);
+        }
     }
 }

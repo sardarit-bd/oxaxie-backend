@@ -29,8 +29,6 @@ class CaseOutcome extends Model
     ];
 
     protected $casts = [
-        'money_saved' => 'decimal:2',
-        'money_recovered' => 'decimal:2',
         'court_avoided' => 'boolean',
         'hired_attorney' => 'boolean',
         'ai_helpfulness_rating' => 'integer',
@@ -54,6 +52,23 @@ class CaseOutcome extends Model
     }
 
     // Helper methods
+    public function scopePublishedTestimonials($query)
+    {
+        return $query->where('testimonial_consent', true)
+                    ->where('testimonial_published', true);
+    }
+
+    public function scopeOfType($query, string $type)
+    {
+        return $query->where('outcome_type', $type);
+    }
+
+
+    public function scopeWithMinRating($query, int $rating)
+    {
+        return $query->where('ai_helpfulness_rating', '>=', $rating);
+    }
+
     public function isWon(): bool
     {
         return $this->outcome_type === 'won';

@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AllCaseController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\WebhookController;
 use App\Http\Controllers\Api\DocumentController;
+use App\Http\Controllers\Api\CaseOutcomeController;
 use App\Http\Controllers\Api\ChatMessageController;
 use App\Http\Controllers\Api\CaseDocumentController;
 use App\Http\Controllers\Api\SubscriptionController;
@@ -126,6 +127,24 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/documents/{documentId}', [DocumentController::class, 'show']);
     Route::get('/documents/{documentId}/download', [DocumentController::class, 'download']);
     Route::delete('/documents/{documentId}', [DocumentController::class, 'destroy']);
+
+    // case outcome routes
+    Route::patch('/case/{id}/mark-resolved', [AllCaseController::class, 'markAsResolved']);
+
+    Route::prefix('case')->group(function () {
+        Route::post('/{caseId}/outcome', [CaseOutcomeController::class, 'store']);
+        Route::get('/{caseId}/outcome', [CaseOutcomeController::class, 'show']);
+    });
+
+    Route::prefix('outcomes')->group(function () {
+        Route::get('/', [CaseOutcomeController::class, 'index']);
+        Route::put('/{outcomeId}', [CaseOutcomeController::class, 'update']);
+        Route::delete('/{outcomeId}', [CaseOutcomeController::class, 'destroy']);
+    });
 });
+
+Route::get('/outcomes/testimonials', [CaseOutcomeController::class, 'testimonials']);
+
+Route::get('/outcomes/statistics', [CaseOutcomeController::class, 'statistics']);
 
 Route::post('/webhooks/stripe', [WebhookController::class, 'handleStripeWebhook']);

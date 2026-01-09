@@ -4,11 +4,13 @@ namespace App\Providers;
 
 use App\Services\AiChatService;
 use App\Services\UserSetupService;
+use App\Services\CaseOutcomeService;
 use App\Services\SubscriptionService;
 use App\Services\UsageTrackingService;
 use App\Services\CreditPurchaseService;
 use Illuminate\Support\ServiceProvider;
 use App\Services\ResponseFeedbackService;
+use App\Repositories\CaseOutcomeRepository;
 use App\Repositories\SubscriptionRepository;
 use App\Repositories\UsageTrackingRepository;
 use App\Repositories\CreditPurchaseRepository;
@@ -71,6 +73,9 @@ class AppServiceProvider extends ServiceProvider
                 $app->make(UsageTrackingRepository::class)
             );
         });
+
+        $this->app->singleton(CaseOutcomeRepository::class);
+        $this->app->singleton(CaseOutcomeService::class);
     }
 
     /**

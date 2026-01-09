@@ -206,11 +206,6 @@ class DocumentController extends Controller
                     ];
                 });
             
-            Log::info('Documents fetched successfully', [
-                'case_id' => $caseId,
-                'document_count' => $documents->count()
-            ]);
-            
             return $this->successResponse(
                 $documents,
                 'Documents fetched successfully'

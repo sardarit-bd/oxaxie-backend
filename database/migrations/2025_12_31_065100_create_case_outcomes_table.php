@@ -17,8 +17,8 @@ return new class extends Migration
             $table->foreignUuid('user_id')->constrained()->onDelete('cascade');
             $table->enum('outcome_type', ['won', 'settled', 'lost', 'dropped']);
             $table->text('outcome_summary');
-            $table->decimal('money_saved', 10, 2)->nullable();
-            $table->decimal('money_recovered', 10, 2)->nullable();
+            $table->text('money_saved')->nullable();
+            $table->text('money_recovered')->nullable();
             $table->boolean('court_avoided')->default(false);
             $table->boolean('hired_attorney')->default(false);
             $table->unsignedTinyInteger('ai_helpfulness_rating')->nullable();

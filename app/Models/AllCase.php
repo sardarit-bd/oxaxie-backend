@@ -66,6 +66,11 @@ class AllCase extends Model
         return $this->hasOne(CaseOutcome::class, 'all_case_id');
     }
 
+    public function hasOutcome(): bool
+    {
+        return $this->outcome()->exists();
+    }
+
     // Helper methods
     public function isActive(): bool
     {
