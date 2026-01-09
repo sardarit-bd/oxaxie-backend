@@ -1,6 +1,5 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\Api\AllCaseController;
@@ -42,7 +41,6 @@ Route::middleware('auth:api')->group(function () {
 
     // chat routes
     Route::post('/chat/send', [ChatMessageController::class, 'sendMessage']);
-    // Route::post('/chat-messages', [ChatMessageController::class, 'store']);
     Route::get('/cases/{caseId}/messages', [ChatMessageController::class, 'index']);
 
     // payment gateway routes
@@ -58,80 +56,61 @@ Route::middleware('auth:api')->group(function () {
         Route::post('/{paymentId}/refund', [PaymentController::class, 'refund']);
     });
 
-    // ============================================
-    // SUBSCRIPTION ROUTES
-    // One record per user - updates on plan changes
-    // ============================================
+    
+    // subscription routes
     Route::prefix('subscriptions')->group(function () {
-        // Store or update subscription (main endpoint)
+
         Route::post('/store-or-update', [SubscriptionController::class, 'storeOrUpdate']);
-        
-        // View subscription
+
         Route::get('/', [SubscriptionController::class, 'show']);
         Route::get('/active', [SubscriptionController::class, 'active']);
         Route::get('/has-active', [SubscriptionController::class, 'hasActive']);
-        
-        // Update subscription
+
         Route::put('/', [SubscriptionController::class, 'update']);
         Route::patch('/', [SubscriptionController::class, 'update']);
-        
-        // Cancel subscription
+ 
         Route::post('/cancel', [SubscriptionController::class, 'cancel']);
-        
-        // Delete subscription
+
         Route::delete('/', [SubscriptionController::class, 'destroy']);
     });
 
-    // ============================================
-    // CREDIT PURCHASE ROUTES
-    // Multiple records per user - immutable transactions
-    // ============================================
+
+    // credit purchase routes
     Route::prefix('credit-purchases')->group(function () {
-        // Create new purchase (always creates new record)
         Route::post('/', [CreditPurchaseController::class, 'store']);
-        
-        // Update only status (amounts are immutable)
+
         Route::patch('/{id}/status', [CreditPurchaseController::class, 'updateStatus']);
-        
-        // View purchases
+
         Route::get('/', [CreditPurchaseController::class, 'index']);
         Route::get('/{id}', [CreditPurchaseController::class, 'show']);
         Route::get('/history/all', [CreditPurchaseController::class, 'history']);
         Route::get('/credits/available', [CreditPurchaseController::class, 'availableCredits']);
     });
 
-    // ============================================
-    // USAGE TRACKING ROUTES
-    // One record per user per billing cycle - updates throughout cycle
-    // ============================================
+
+    // usage tracking routes
     Route::prefix('usage')->group(function () {
-        // Record/update usage (upsert pattern)
         Route::post('/record', [UsageTrackingController::class, 'recordUsage']);
-        
-        // Increment usage (for real-time tracking)
+
         Route::post('/increment', [UsageTrackingController::class, 'incrementUsage']);
-        
-        // View usage
+
         Route::get('/current', [UsageTrackingController::class, 'getCurrentUsage']);
         Route::get('/history', [UsageTrackingController::class, 'getUsageHistory']);
         Route::get('/summary', [UsageTrackingController::class, 'getUsageSummary']);
         Route::get('/{id}', [UsageTrackingController::class, 'show']);
-        
-        // Threshold management
+
         Route::post('/check-threshold', [UsageTrackingController::class, 'checkCostThreshold']);
 
     });
 
-    // ============================================
-    // RESPONSE FEEDBACK ROUTES
-    // ============================================
+
+    // response feedback routes
     Route::prefix('feedback')->group(function () {
         Route::post('/cases/{caseId}/feedback', [ResponseFeedbackController::class, 'store']);
         Route::get('/cases/{caseId}/feedback', [ResponseFeedbackController::class, 'index']);
         Route::get('/cases/{caseId}/feedback/statistics', [ResponseFeedbackController::class, 'statistics']);
         Route::get('/cases/{caseId}/pending-feedback', [ResponseFeedbackController::class, 'getPendingFeedback']);
         
-        // Single feedback operations
         Route::get('/{id}', [ResponseFeedbackController::class, 'show']);
         Route::put('/{id}', [ResponseFeedbackController::class, 'update']);
         Route::delete('/{id}', [ResponseFeedbackController::class, 'destroy']);
@@ -140,8 +119,6 @@ Route::middleware('auth:api')->group(function () {
 
         Route::post('/{feedbackId}/documents', [CaseDocumentController::class, 'uploadToFeedback']);
     });
-
-
 
     // Document routes
     Route::post('/documents/generate', [DocumentController::class, 'generate']);
@@ -152,10 +129,3 @@ Route::middleware('auth:api')->group(function () {
 });
 
 Route::post('/webhooks/stripe', [WebhookController::class, 'handleStripeWebhook']);
-
-// Protected routes example
-Route::middleware('auth:api')->group(function () {
-    Route::get('users', function () {
-        return response()->json(['message' => 'This is a protected route']);
-    });
-});
