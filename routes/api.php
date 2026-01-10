@@ -29,6 +29,7 @@ Route::middleware('auth:api')->group(function () {
     Route::get('me', [AuthController::class, 'me']);
     Route::post('logout', [AuthController::class, 'logout']);
     Route::get('/user/subscription', [UserController::class, 'getSubscription']);
+    Route::post('/subscription/downgrade', [SubscriptionController::class, 'downgrade']);
 
     // case routes
     Route::apiResource('/case', AllCaseController::class);

@@ -89,4 +89,43 @@ class Subscription extends Model
     {
         return $this->current_period_end?->diffInDays(now()) ?? 0;
     }
+
+    /**
+     * Get usage limits for the current plan tier using cost calculator
+     */
+    public function getLimits(): array
+    {
+        $costCalculator = app(\App\Services\AiCostCalculatorService::class);
+        
+        return [
+            'messages_limit' => $costCalculator->getChatLimit($this->plan_tier),
+            'cases_limit' => $costCalculator->getCaseLimit($this->plan_tier),
+            'documents_limit' => $costCalculator->getDocumentLimit($this->plan_tier),
+            'threshold' => $costCalculator->getThreshold($this->plan_tier),
+        ];
+    }
+
+    /**
+     * Check if user can perform actions based on their plan
+     */
+    public function canCreateCase(): bool
+    {
+        $costCalculator = app(\App\Services\AiCostCalculatorService::class);
+        $limit = $costCalculator->getCaseLimit($this->plan_tier);
+        return $limit === null || $limit > 0;
+    }
+
+    public function canGenerateDocument(): bool
+    {
+        $costCalculator = app(\App\Services\AiCostCalculatorService::class);
+        $limit = $costCalculator->getDocumentLimit($this->plan_tier);
+        return $limit === null || $limit > 0;
+    }
+
+    public function canSendMessage(): bool
+    {
+        $costCalculator = app(\App\Services\AiCostCalculatorService::class);
+        $limit = $costCalculator->getChatLimit($this->plan_tier);
+        return $limit === null || $limit > 0;
+    }
 }
