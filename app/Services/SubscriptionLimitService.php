@@ -119,13 +119,27 @@ class SubscriptionLimitService
         $planTier = $subscription->plan_tier;
         $caseLimit = $this->costCalculator->getCaseLimit($planTier);
 
-        // Free tier: 1 cases allowed
+        // Free tier: 1 case allowed - check if already created
         if ($planTier === 'free') {
+            $today = Carbon::today()->toDateString();
+            $usage = $this->usageTrackingRepository->getCurrentUsage($userId, $today);
+            $casesCreated = $usage->cases_created ?? 0;
+            
+            if ($casesCreated >= $caseLimit) {
+                return [
+                    'allowed' => false,
+                    'reason' => "You've reached your Free plan limit of {$caseLimit} case per month. Please upgrade to Pro.",
+                    'upgrade_to' => 'pro',
+                    'current_plan' => 'free',
+                    'limit' => $caseLimit,
+                    'used' => $casesCreated,
+                ];
+            }
+            
             return [
                 'allowed' => true,
-                'reason' => 'Case creation is not available on the free plan. Please upgrade to Pro.',
-                'upgrade_to' => 'pro',
                 'current_plan' => 'free',
+                'remaining' => $caseLimit - $casesCreated,
             ];
         }
 
