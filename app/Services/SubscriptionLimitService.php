@@ -119,7 +119,6 @@ class SubscriptionLimitService
         $planTier = $subscription->plan_tier;
         $caseLimit = $this->costCalculator->getCaseLimit($planTier);
 
-        // Free tier: 1 case allowed - check if already created
         if ($planTier === 'free') {
             $today = Carbon::today()->toDateString();
             $usage = $this->usageTrackingRepository->getCurrentUsage($userId, $today);

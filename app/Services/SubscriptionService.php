@@ -188,7 +188,6 @@ class SubscriptionService
         }
     }
 
-    // Keep all other existing methods unchanged
     public function getUserSubscription(string $userId): ?Subscription
     {
         return $this->subscriptionRepository->findByUserId($userId);
