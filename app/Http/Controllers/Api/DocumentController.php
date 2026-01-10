@@ -284,6 +284,20 @@ class DocumentController extends Controller
         try {
             $user = auth('api')->user();
             
+            $subscription = $user->subscription;
+            
+            if (!$subscription || $subscription->plan === 'free') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Document downloads are not available on the Free plan. Upgrade to Pro to download your documents.',
+                    'errors' => [
+                        'upgrade_required' => true,
+                        'current_plan' => 'free',
+                        'upgrade_to' => 'pro'
+                    ]
+                ], 403);
+            }
+            
             $document = Document::where('id', $documentId)
                 ->where('user_id', $user->id)
                 ->first();
@@ -292,7 +306,6 @@ class DocumentController extends Controller
                 return $this->errorResponse('Document not found', 404);
             }
             
-            // Increment download count
             $document->incrementDownload();
             
             return $this->successResponse([

@@ -13,6 +13,8 @@ use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\UsageTrackingController;
 use App\Http\Controllers\Api\CreditPurchaseController;
 use App\Http\Controllers\Api\ResponseFeedbackController;
+use App\Http\Controllers\Api\UserController;
+use App\Models\User;
 
 Route::controller(AuthController::class)->group(function () {
     Route::post('register', 'register');
@@ -26,6 +28,7 @@ Route::middleware('auth:api')->group(function () {
     // user routes
     Route::get('me', [AuthController::class, 'me']);
     Route::post('logout', [AuthController::class, 'logout']);
+    Route::get('/user/subscription', [UserController::class, 'getSubscription']);
 
     // case routes
     Route::apiResource('/case', AllCaseController::class);
