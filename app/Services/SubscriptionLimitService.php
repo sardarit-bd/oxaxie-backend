@@ -119,10 +119,10 @@ class SubscriptionLimitService
         $planTier = $subscription->plan_tier;
         $caseLimit = $this->costCalculator->getCaseLimit($planTier);
 
-        // Free tier: No cases allowed
+        // Free tier: 1 cases allowed
         if ($planTier === 'free') {
             return [
-                'allowed' => false,
+                'allowed' => true,
                 'reason' => 'Case creation is not available on the free plan. Please upgrade to Pro.',
                 'upgrade_to' => 'pro',
                 'current_plan' => 'free',

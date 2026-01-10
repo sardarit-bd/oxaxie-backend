@@ -22,7 +22,7 @@ class AiCostCalculatorService
 
     // Chat limits per plan
     private const CHAT_LIMITS = [
-        'free' => 0,          
+        'free' => 1,          
         'pro' => 100,          
         'pro_plus' => 500,     
         'enterprise' => -1,    
@@ -30,16 +30,16 @@ class AiCostCalculatorService
 
     // Case limits per plan
     private const CASE_LIMITS = [
-        'free' => 0,
+        'free' => 1,
         'pro' => 3,
-        'pro_plus' => -1,  // unlimited
+        'pro_plus' => -1, 
         'enterprise' => -1,
     ];
 
     // Document limits per plan
     private const DOCUMENT_LIMITS = [
         'free' => 1,
-        'pro' => -1,  // unlimited
+        'pro' => -1, 
         'pro_plus' => -1,
         'enterprise' => -1,
     ];
@@ -47,7 +47,7 @@ class AiCostCalculatorService
     // Message limits per plan
     private const MESSAGE_LIMITS = [
         'free' => 10,
-        'pro' => -1,  // unlimited
+        'pro' => -1, 
         'pro_plus' => -1,
         'enterprise' => -1,
     ];
