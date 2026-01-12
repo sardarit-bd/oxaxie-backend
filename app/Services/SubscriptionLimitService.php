@@ -102,7 +102,7 @@ class SubscriptionLimitService
         }
 
         if ($planTier === 'pro_plus') {
-            $threshold = $this->costCalculator->getThreshold($planTier); // $19
+            $threshold = $this->costCalculator->getThreshold($planTier);
             $costAccumulated = $usage->ai_cost_accumulated ?? 0.0;
 
             $creditService = app(\App\Services\CreditPurchaseService::class);

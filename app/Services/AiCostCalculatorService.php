@@ -92,7 +92,6 @@ class AiCostCalculatorService
         $planTier = $user->subscription?->plan_tier ?? 'free';
         $limit = $this->getCaseLimit($planTier);
         
-        // -1 means unlimited
         if ($limit === -1) {
             return false;
         }
@@ -149,7 +148,7 @@ class AiCostCalculatorService
         $limit = $this->getCaseLimit($planTier);
         
         if ($limit === -1) {
-            return -1; // unlimited
+            return -1;
         }
 
         $currentUsage = $user->currentUsage;
@@ -167,7 +166,7 @@ class AiCostCalculatorService
         $limit = $this->getMessageLimit($planTier);
         
         if ($limit === -1) {
-            return -1; // unlimited
+            return -1;
         }
 
         $currentUsage = $user->currentUsage;

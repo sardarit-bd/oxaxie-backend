@@ -33,7 +33,6 @@ class ChatMessageController extends Controller
 
     /**
      * Send chat message and get AI response
-     * This is the main endpoint for chat functionality
      */
     public function sendMessage(Request $request)
     {

@@ -132,7 +132,7 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/documents/{documentId}/download', [DocumentController::class, 'download']);
     Route::delete('/documents/{documentId}', [DocumentController::class, 'destroy']);
 
-    // case outcome routes
+    // Case outcome routes
     Route::patch('/case/{id}/mark-resolved', [AllCaseController::class, 'markAsResolved']);
 
     Route::prefix('case')->group(function () {

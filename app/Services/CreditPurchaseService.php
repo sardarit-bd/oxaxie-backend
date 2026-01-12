@@ -40,7 +40,6 @@ class CreditPurchaseService
             }
         }
 
-        // Prepare purchase data
         $purchaseData = [
             'user_id' => $userId,
             'subscription_id' => $subscription->id,

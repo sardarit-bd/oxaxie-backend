@@ -34,20 +34,16 @@ class UsageTrackingService
             throw new Exception('No active subscription found');
         }
 
-        // Calculate cost
         $cost = $this->costCalculator->calculateCost($model, $inputTokens, $outputTokens);
-        
-        // Get billing cycle date
+
         $billingCycleDate = Carbon::parse($subscription->current_period_start)->toDateString();
-        
-        // Get or create usage tracking
+
         $usageTracking = $this->usageTrackingRepository->findOrCreateByBillingCycle(
             $userId,
             $billingCycleDate,
             $subscription->id
         );
 
-        // Calculate new accumulated cost
         $newCostAccumulated = $usageTracking->ai_cost_accumulated + $cost;
         $planTier = $subscription->plan_tier;
         $threshold = $this->costCalculator->getThreshold($planTier);

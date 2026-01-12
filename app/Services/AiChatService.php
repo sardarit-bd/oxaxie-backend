@@ -55,7 +55,6 @@ class AiChatService
             }
         }
 
-        // If no provider found, throw helpful error
         $availableProviders = array_keys($this->providers);
         throw new Exception(
             "No provider found for model: {$model}. " .
