@@ -52,14 +52,13 @@ class UsageTrackingService
         $planTier = $subscription->plan_tier;
         $threshold = $this->costCalculator->getThreshold($planTier);
 
-        // ✅ CRITICAL LOGIC: Handle credits for Pro Plus
         $creditsUsed = $usageTracking->credits_used ?? 0.0;
         $thresholdReached = false;
         $needsCredits = false;
 
         if (in_array($planTier, ['pro', 'pro_plus'])) {
             if ($planTier === 'pro_plus') {
-                // ✅ Pro Plus: Check threshold + credits
+     
                 $availableCredits = $this->creditPurchaseService->getAvailableCredits($userId);
                 $totalLimit = $threshold + $availableCredits; // $19 + credits
                 
@@ -78,7 +77,7 @@ class UsageTrackingService
                     $creditsUsed = 0.0; // Haven't exceeded threshold yet
                 }
             } else {
-                // ✅ Pro: Simple threshold check
+     
                 if ($newCostAccumulated >= $threshold) {
                     $thresholdReached = true;
                 }
