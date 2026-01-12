@@ -60,7 +60,7 @@ class UsageTrackingService
             if ($planTier === 'pro_plus') {
      
                 $availableCredits = $this->creditPurchaseService->getAvailableCredits($userId);
-                $totalLimit = $threshold + $availableCredits; // $19 + credits
+                $totalLimit = $threshold + $availableCredits;
                 
                 // Calculate how much of the new cost goes to credits
                 if ($newCostAccumulated > $threshold) {
@@ -71,10 +71,10 @@ class UsageTrackingService
                     // Check if we've exceeded total limit
                     if ($newCostAccumulated >= $totalLimit) {
                         $thresholdReached = true;
-                        $needsCredits = true; // Prompt to purchase more credits
+                        $needsCredits = true;
                     }
                 } else {
-                    $creditsUsed = 0.0; // Haven't exceeded threshold yet
+                    $creditsUsed = 0.0;
                 }
             } else {
      
