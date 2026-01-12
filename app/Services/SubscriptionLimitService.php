@@ -38,9 +38,18 @@ class SubscriptionLimitService
             ];
         }
 
+        if ($subscription->current_period_end && Carbon::parse($subscription->current_period_end)->isPast()) {
+            return [
+                'allowed' => false,
+                'reason' => 'Your subscription has expired. Please renew to continue.',
+                'upgrade_to' => $subscription->plan_tier,
+                'current_plan' => 'expired',
+            ];
+        }
+
         $planTier = $subscription->plan_tier;
-        $today = Carbon::today()->toDateString();
-        $usage = $this->usageTrackingRepository->getCurrentUsage($userId, $today);
+        $billingCycleStart = Carbon::parse($subscription->current_period_start)->startOfDay();
+        $usage = $this->usageTrackingRepository->getCurrentUsage($userId, $billingCycleStart->toDateString());
 
         // Get plan limits
         $chatLimit = $this->costCalculator->getChatLimit($planTier);
@@ -116,12 +125,22 @@ class SubscriptionLimitService
             ];
         }
 
+        if ($subscription->current_period_end && Carbon::parse($subscription->current_period_end)->isPast()) {
+            return [
+                'allowed' => false,
+                'reason' => 'Your subscription has expired. Please renew to continue.',
+                'upgrade_to' => $subscription->plan_tier,
+                'current_plan' => 'expired',
+            ];
+        }
+
         $planTier = $subscription->plan_tier;
         $caseLimit = $this->costCalculator->getCaseLimit($planTier);
+        
+        $billingCycleStart = Carbon::parse($subscription->current_period_start)->startOfDay();
+        $usage = $this->usageTrackingRepository->getCurrentUsage($userId, $billingCycleStart->toDateString());
 
         if ($planTier === 'free') {
-            $today = Carbon::today()->toDateString();
-            $usage = $this->usageTrackingRepository->getCurrentUsage($userId, $today);
             $casesCreated = $usage->cases_created ?? 0;
             
             if ($casesCreated >= $caseLimit) {
@@ -144,8 +163,6 @@ class SubscriptionLimitService
 
         // Pro: Check case limit
         if ($planTier === 'pro') {
-            $today = Carbon::today()->toDateString();
-            $usage = $this->usageTrackingRepository->getCurrentUsage($userId, $today);
             $casesCreated = $usage->cases_created ?? 0;
             
             if ($casesCreated >= $caseLimit) {
@@ -192,10 +209,19 @@ class SubscriptionLimitService
             ];
         }
 
+        if ($subscription->current_period_end && Carbon::parse($subscription->current_period_end)->isPast()) {
+            return [
+                'allowed' => false,
+                'reason' => 'Your subscription has expired. Please renew to continue.',
+                'upgrade_to' => $subscription->plan_tier,
+                'current_plan' => 'expired',
+            ];
+        }
+
         $planTier = $subscription->plan_tier;
         $documentLimit = $this->costCalculator->getDocumentLimit($planTier);
-        $today = Carbon::today()->toDateString();
-        $usage = $this->usageTrackingRepository->getCurrentUsage($userId, $today);
+        $billingCycleStart = Carbon::parse($subscription->current_period_start)->startOfDay();
+        $usage = $this->usageTrackingRepository->getCurrentUsage($userId, $billingCycleStart->toDateString());
 
         // Free tier: Check fixed document limit
         if ($planTier === 'free') {
@@ -262,8 +288,8 @@ class SubscriptionLimitService
         }
 
         $planTier = $subscription->plan_tier;
-        $today = Carbon::today()->toDateString();
-        $usage = $this->usageTrackingRepository->getCurrentUsage($userId, $today);
+        $billingCycleStart = Carbon::parse($subscription->current_period_start)->startOfDay();
+        $usage = $this->usageTrackingRepository->getCurrentUsage($userId, $billingCycleStart->toDateString());
 
         $chatLimit = $this->costCalculator->getChatLimit($planTier);
         $caseLimit = $this->costCalculator->getCaseLimit($planTier);
@@ -317,8 +343,8 @@ class SubscriptionLimitService
         }
 
         $planTier = $subscription->plan_tier;
-        $today = Carbon::today()->toDateString();
-        $usage = $this->usageTrackingRepository->getCurrentUsage($userId, $today);
+        $billingCycleStart = Carbon::parse($subscription->current_period_start)->startOfDay();
+        $usage = $this->usageTrackingRepository->getCurrentUsage($userId, $billingCycleStart->toDateString());
 
         if (!$usage) {
             return null;

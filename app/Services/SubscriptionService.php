@@ -40,6 +40,7 @@ class SubscriptionService
             $wasRecentlyCreated = false;
             $oldSubscriptionCancelled = false;
 
+            // Check if updating existing subscription
             $existingStripeSubscription = null;
             if (isset($data['stripe_subscription_id'])) {
                 $existingStripeSubscription = Subscription::where('stripe_subscription_id', $data['stripe_subscription_id'])->first();
@@ -66,6 +67,7 @@ class SubscriptionService
                 ];
             }
 
+            // Cancel old subscription if different Stripe ID
             if ($oldSubscription && $oldSubscription->stripe_subscription_id !== $data['stripe_subscription_id']) {
                 Log::info('Cancelling old subscription for fresh start', [
                     'user_id' => $userId,
@@ -86,6 +88,7 @@ class SubscriptionService
                 ]);
             }
 
+            // Create new subscription
             $subscriptionData = array_merge($data, [
                 'user_id' => $userId,
                 'id' => \Illuminate\Support\Str::uuid(),
@@ -102,47 +105,90 @@ class SubscriptionService
 
             Log::info('New subscription created', ['subscription_id' => $subscription->id]);
 
-        
+   
             try {
-                $billingCycleDate = Carbon::today()->toDateString();
+                $billingCycleDate = Carbon::parse($subscription->current_period_start)->toDateString();
                 
                 Log::info('Attempting to create/update usage tracking', [
                     'user_id' => $userId,
                     'subscription_id' => $subscription->id,
-                    'billing_cycle_date' => $billingCycleDate
+                    'billing_cycle_date' => $billingCycleDate,
+                    'new_plan_tier' => $data['plan_tier'],
+                    'old_plan_tier' => $oldSubscription?->plan_tier ?? 'none'
                 ]);
-
 
                 $existingUsage = \App\Models\UsageTracking::where('user_id', $userId)
                     ->where('billing_cycle_date', $billingCycleDate)
                     ->first();
                 
+                $shouldResetUsage = $this->shouldResetUsageOnRenewal(
+                    $oldSubscription?->plan_tier ?? 'none',
+                    $data['plan_tier']
+                );
+
                 if ($existingUsage) {
-                    Log::info('Updating existing usage tracking', ['usage_id' => $existingUsage->id]);
-                    $existingUsage->update([
-                        'subscription_id' => $subscription->id,
-                        'messages_used' => 0,
-                        'documents_generated' => 0,
-                        'cases_created' => 0,
-                        'ai_cost_accumulated' => 0.0000,
-                        'input_tokens_used' => 0,
-                        'output_tokens_used' => 0,
-                        'cost_threshold_reached' => false,
+                    Log::info('Updating existing usage tracking', [
+                        'usage_id' => $existingUsage->id,
+                        'should_reset' => $shouldResetUsage
                     ]);
+
+                    if ($shouldResetUsage) {
+                    
+                        $existingUsage->update([
+                            'subscription_id' => $subscription->id,
+                            'messages_used' => 0,
+                            'documents_generated' => 0,
+                            'cases_created' => 0,
+                            'ai_cost_accumulated' => 0.0000,
+                            'input_tokens_used' => 0,
+                            'output_tokens_used' => 0,
+                            'cost_threshold_reached' => false,
+                        ]);
+                    } else {
+                        // ✅ PRO/PRO_PLUS RENEWAL: Keep usage, only update subscription_id
+                        $existingUsage->update([
+                            'subscription_id' => $subscription->id,
+                            // Usage data preserved
+                        ]);
+                    }
                 } else {
-                    \App\Models\UsageTracking::create([
-                        'id' => \Illuminate\Support\Str::uuid(),
-                        'user_id' => $userId,
-                        'subscription_id' => $subscription->id,
-                        'billing_cycle_date' => $billingCycleDate,
-                        'messages_used' => 0,
-                        'documents_generated' => 0,
-                        'cases_created' => 0,
-                        'ai_cost_accumulated' => 0.0000,
-                        'input_tokens_used' => 0,
-                        'output_tokens_used' => 0,
-                        'cost_threshold_reached' => false,
-                    ]);
+                    // New usage record
+                    if ($shouldResetUsage || !$oldSubscription) {
+                        // ✅ FREE TIER or NEW USER: Create fresh usage
+                        \App\Models\UsageTracking::create([
+                            'id' => \Illuminate\Support\Str::uuid(),
+                            'user_id' => $userId,
+                            'subscription_id' => $subscription->id,
+                            'billing_cycle_date' => $billingCycleDate,
+                            'messages_used' => 0,
+                            'documents_generated' => 0,
+                            'cases_created' => 0,
+                            'ai_cost_accumulated' => 0.0000,
+                            'input_tokens_used' => 0,
+                            'output_tokens_used' => 0,
+                            'cost_threshold_reached' => false,
+                        ]);
+                    } else {
+                        // ✅ PRO/PRO_PLUS RENEWAL: Copy previous usage to new period
+                        $previousUsage = \App\Models\UsageTracking::where('user_id', $userId)
+                            ->where('subscription_id', $oldSubscription->id)
+                            ->orderBy('billing_cycle_date', 'desc')
+                            ->first();
+
+                        \App\Models\UsageTracking::create([
+                            'id' => \Illuminate\Support\Str::uuid(),
+                            'user_id' => $userId,
+                            'subscription_id' => $subscription->id,
+                            'billing_cycle_date' => $billingCycleDate,
+                            'messages_used' => $previousUsage?->messages_used ?? 0,
+                            'documents_generated' => $previousUsage?->documents_generated ?? 0,
+                            'cases_created' => $previousUsage?->cases_created ?? 0,
+                            'ai_cost_accumulated' => $previousUsage?->ai_cost_accumulated ?? 0.0000,
+                            'input_tokens_used' => $previousUsage?->input_tokens_used ?? 0,
+                            'output_tokens_used' => $previousUsage?->output_tokens_used ?? 0,
+                            'cost_threshold_reached' => $previousUsage?->cost_threshold_reached ?? false,
+                        ]);
+                    }
                 }
 
                 Log::info('Usage tracking created/updated successfully');
@@ -186,6 +232,30 @@ class SubscriptionService
 
             throw $e;
         }
+    }
+
+    /**
+     * Determine if usage should reset
+     * 
+     * @param string $oldPlanTier Previous plan tier
+     * @param string $newPlanTier New plan tier
+     * @return bool True if usage should reset, false if preserved
+     */
+    protected function shouldResetUsageOnRenewal(string $oldPlanTier, string $newPlanTier): bool
+    {
+        if ($oldPlanTier === 'none' || $oldPlanTier === 'free') {
+            return true;
+        }
+        
+        if (in_array($oldPlanTier, ['pro', 'pro_plus']) && in_array($newPlanTier, ['pro', 'pro_plus'])) {
+            return false;
+        }
+
+        if (in_array($oldPlanTier, ['pro', 'pro_plus']) && $newPlanTier === 'free') {
+            return true;
+        }
+
+        return true;
     }
 
     public function getUserSubscription(string $userId): ?Subscription
