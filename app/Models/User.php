@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Carbon\Carbon;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -14,14 +14,8 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 
 class User extends Authenticatable implements JWTSubject
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable, HasUuids, SoftDeletes;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
-     */
     protected $fillable = [
         'name',
         'email',
@@ -30,11 +24,6 @@ class User extends Authenticatable implements JWTSubject
         'email_verified_at',
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
-     */
     protected $hidden = [
         'password',
         'remember_token',
@@ -49,11 +38,20 @@ class User extends Authenticatable implements JWTSubject
     ];
 
     // Relationships
+    
+    /**
+     * Get the user's active subscription
+     */
     public function subscription(): HasOne
     {
-        return $this->hasOne(Subscription::class);
+        return $this->hasOne(Subscription::class)
+            ->where('status', 'active')
+            ->latest('current_period_start');
     }
 
+    /**
+     * Get all subscriptions (including inactive)
+     */
     public function subscriptions(): HasMany
     {
         return $this->hasMany(Subscription::class);
@@ -79,10 +77,27 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasMany(UsageTracking::class);
     }
 
+    /**
+     * Get current usage for the active subscription's billing cycle
+     */
     public function currentUsage(): HasOne
     {
         return $this->hasOne(UsageTracking::class)
-            ->where('billing_cycle_date', today()->format('Y-m-d'));
+            ->whereHas('subscription', function ($query) {
+                $query->where('status', 'active');
+            })
+            ->where(function ($query) {
+                // Get the active subscription's billing cycle date
+                $activeSubscription = $this->subscription;
+                if ($activeSubscription && $activeSubscription->current_period_start) {
+                    $billingCycleDate = Carbon::parse($activeSubscription->current_period_start)->toDateString();
+                    $query->where('billing_cycle_date', $billingCycleDate);
+                } else {
+                    // Fallback to today if no active subscription
+                    $query->where('billing_cycle_date', today()->format('Y-m-d'));
+                }
+            })
+            ->latest('created_at');
     }
 
     public function creditPurchases(): HasMany
@@ -100,21 +115,6 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasMany(CaseOutcome::class);
     }
 
-    // public function notifications(): HasMany
-    // {
-    //     return $this->hasMany(Notification::class);
-    // }
-
-    // public function analyticsEvents(): HasMany
-    // {
-    //     return $this->hasMany(AnalyticsEvent::class);
-    // }
-
-    // public function auditLogs(): HasMany
-    // {
-    //     return $this->hasMany(AuditLog::class);
-    // }
-
     // Helper methods
     public function isActive(): bool
     {
@@ -128,11 +128,10 @@ class User extends Authenticatable implements JWTSubject
 
     public function hasActiveSubscription(): bool
     {
-        return $this->subscription?->status === 'active';
+        return $this->subscription !== null && $this->subscription->status === 'active';
     }
 
-
-    // jwt auth
+    // JWT auth
     public function getJWTIdentifier()
     {
         return $this->getKey();
