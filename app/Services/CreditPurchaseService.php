@@ -2,11 +2,14 @@
 
 namespace App\Services;
 
-use App\Repositories\CreditPurchaseRepository;
-use App\Repositories\SubscriptionRepository;
-use App\Models\CreditPurchase;
-use Illuminate\Database\Eloquent\Collection;
 use Exception;
+use Carbon\Carbon;
+use App\Models\Subscription;
+use App\Models\UsageTracking;
+use App\Models\CreditPurchase;
+use App\Repositories\SubscriptionRepository;
+use Illuminate\Database\Eloquent\Collection;
+use App\Repositories\CreditPurchaseRepository;
 
 class CreditPurchaseService
 {
@@ -101,7 +104,32 @@ class CreditPurchaseService
      */
     public function getAvailableCredits(string $userId): float
     {
-        return $this->creditPurchaseRepository->getAvailableCredits($userId);
+        $subscription = Subscription::where('user_id', $userId)
+            ->where('status', 'active')
+            ->first();
+        
+        if (!$subscription) {
+            return 0.0;
+        }
+
+        // Total purchased credits for current billing cycle
+        $totalPurchased = CreditPurchase::where('user_id', $userId)
+            ->where('subscription_id', $subscription->id)
+            ->where('status', 'completed')
+            ->whereBetween('created_at', [
+                $subscription->current_period_start,
+                $subscription->current_period_end
+            ])
+            ->sum('credits_added');
+
+        // Credits used from usage_tracking
+        $usageTracking = UsageTracking::where('user_id', $userId)
+            ->where('billing_cycle_date', Carbon::parse($subscription->current_period_start)->toDateString())
+            ->first();
+
+        $creditsUsed = $usageTracking->credits_used ?? 0.0;
+
+        return max(0, $totalPurchased - $creditsUsed);
     }
 
     /**

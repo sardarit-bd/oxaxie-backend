@@ -76,7 +76,7 @@ class SubscriptionLimitService
             ];
         }
 
-        if ($planTier === 'pro' || $planTier === 'pro_plus') {
+        if ($planTier === 'pro') {
             $costAccumulated = $usage->ai_cost_accumulated ?? 0.0;
             
             if ($usage && $usage->cost_threshold_reached) {
@@ -98,6 +98,44 @@ class SubscriptionLimitService
                 'threshold' => $threshold,
                 'cost_accumulated' => $costAccumulated,
                 'remaining_cost' => $threshold - $costAccumulated,
+            ];
+        }
+
+        if ($planTier === 'pro_plus') {
+            $threshold = $this->costCalculator->getThreshold($planTier); // $19
+            $costAccumulated = $usage->ai_cost_accumulated ?? 0.0;
+
+            $creditService = app(\App\Services\CreditPurchaseService::class);
+            $availableCredits = $creditService->getAvailableCredits($userId);
+            
+            // Calculate total available limit
+            $creditsUsed = $usage->credits_used ?? 0.0;
+            $remainingCredits = $availableCredits;
+            $totalLimit = $threshold + $remainingCredits;
+            
+            if ($costAccumulated >= $totalLimit) {
+                return [
+                    'allowed' => false,
+                    'reason' => "You've reached your $" . number_format($threshold, 2) . " monthly threshold" 
+                            . ($availableCredits > 0 ? " and used all available credits" : "") 
+                            . ". Purchase additional credits to continue.",
+                    'upgrade_to' => null,
+                    'current_plan' => $planTier,
+                    'threshold' => $threshold,
+                    'credits_available' => $remainingCredits,
+                    'cost_accumulated' => $costAccumulated,
+                    'can_purchase_credits' => true,
+                    'credit_options' => [5.00, 10.00, 20.00],
+                ];
+            }
+            
+            return [
+                'allowed' => true,
+                'current_plan' => $planTier,
+                'threshold' => $threshold,
+                'credits_available' => $remainingCredits,
+                'cost_accumulated' => $costAccumulated,
+                'remaining_balance' => $totalLimit - $costAccumulated,
             ];
         }
 
@@ -243,8 +281,7 @@ class SubscriptionLimitService
             ];
         }
 
-        // Pro and Pro Plus: Check cost threshold
-        if ($planTier === 'pro' || $planTier === 'pro_plus') {
+        if ($planTier === 'pro') {
             $threshold = $this->costCalculator->getThreshold($planTier);
             $costAccumulated = $usage->ai_cost_accumulated ?? 0.0;
             
@@ -262,6 +299,44 @@ class SubscriptionLimitService
             return [
                 'allowed' => true,
                 'current_plan' => $planTier,
+            ];
+        }
+
+        if ($planTier === 'pro_plus') {
+            $threshold = $this->costCalculator->getThreshold($planTier); // $19
+            $costAccumulated = $usage->ai_cost_accumulated ?? 0.0;
+            
+            $creditService = app(\App\Services\CreditPurchaseService::class);
+            $availableCredits = $creditService->getAvailableCredits($userId);
+            
+            // Calculate total available limit
+            $creditsUsed = $usage->credits_used ?? 0.0;
+            $remainingCredits = $availableCredits;
+            $totalLimit = $threshold + $remainingCredits;
+            
+            if ($costAccumulated >= $totalLimit) {
+                return [
+                    'allowed' => false,
+                    'reason' => "You've reached your $" . number_format($threshold, 2) . " monthly threshold" 
+                            . ($availableCredits > 0 ? " and used all available credits" : "") 
+                            . ". Purchase additional credits to continue.",
+                    'upgrade_to' => null,
+                    'current_plan' => $planTier,
+                    'threshold' => $threshold,
+                    'credits_available' => $remainingCredits,
+                    'cost_accumulated' => $costAccumulated,
+                    'can_purchase_credits' => true,
+                    'credit_options' => [5.00, 10.00, 20.00], // Available amounts
+                ];
+            }
+            
+            return [
+                'allowed' => true,
+                'current_plan' => $planTier,
+                'threshold' => $threshold,
+                'credits_available' => $remainingCredits,
+                'cost_accumulated' => $costAccumulated,
+                'remaining_balance' => $totalLimit - $costAccumulated,
             ];
         }
 

@@ -2,51 +2,115 @@
 
 namespace App\Services;
 
-use App\Repositories\UsageTrackingRepository;
-use App\Repositories\SubscriptionRepository;
-use App\Models\UsageTracking;
-use Illuminate\Database\Eloquent\Collection;
-use Carbon\Carbon;
 use Exception;
+use Carbon\Carbon;
+use App\Models\UsageTracking;
+use App\Services\CreditPurchaseService;
+use App\Repositories\SubscriptionRepository;
+use Illuminate\Database\Eloquent\Collection;
+use App\Repositories\UsageTrackingRepository;
 
 class UsageTrackingService
 {
     public function __construct(
         protected UsageTrackingRepository $usageTrackingRepository,
-        protected SubscriptionRepository $subscriptionRepository
+        protected SubscriptionRepository $subscriptionRepository,
+        protected AiCostCalculatorService $costCalculator,
+        protected CreditPurchaseService $creditPurchaseService
     ) {}
 
     /**
-     * Record or update usage for a billing cycle
+     * Track AI usage after successful response
      */
-    public function recordUsage(string $userId, array $data): array
-    {
+    public function trackAiUsage(
+        string $userId,
+        string $model,
+        int $inputTokens,
+        int $outputTokens
+    ): array {
+        // Get subscription
         $subscription = $this->subscriptionRepository->findByUserId($userId);
-        
-        $usageData = [
-            'subscription_id' => $subscription?->id,
-            'messages_used' => $data['messages_used'] ?? 0,
-            'documents_generated' => $data['documents_generated'] ?? 0,
-            'cases_created' => $data['cases_created'] ?? 0,
-            'ai_cost_accumulated' => $data['ai_cost_accumulated'] ?? 0.0000,
-            'input_tokens_used' => $data['input_tokens_used'] ?? 0,
-            'output_tokens_used' => $data['output_tokens_used'] ?? 0,
-        ];
+        if (!$subscription) {
+            throw new Exception('No active subscription found');
+        }
 
-        $usageTracking = $this->usageTrackingRepository->updateOrCreate(
+        // Calculate cost
+        $cost = $this->costCalculator->calculateCost($model, $inputTokens, $outputTokens);
+        
+        // Get billing cycle date
+        $billingCycleDate = Carbon::parse($subscription->current_period_start)->toDateString();
+        
+        // Get or create usage tracking
+        $usageTracking = $this->usageTrackingRepository->findOrCreateByBillingCycle(
             $userId,
-            $data['billing_cycle_date'],
-            $usageData
+            $billingCycleDate,
+            $subscription->id
         );
 
+        // Calculate new accumulated cost
+        $newCostAccumulated = $usageTracking->ai_cost_accumulated + $cost;
+        $planTier = $subscription->plan_tier;
+        $threshold = $this->costCalculator->getThreshold($planTier);
+
+        // ✅ CRITICAL LOGIC: Handle credits for Pro Plus
+        $creditsUsed = $usageTracking->credits_used ?? 0.0;
+        $thresholdReached = false;
+        $needsCredits = false;
+
+        if (in_array($planTier, ['pro', 'pro_plus'])) {
+            if ($planTier === 'pro_plus') {
+                // ✅ Pro Plus: Check threshold + credits
+                $availableCredits = $this->creditPurchaseService->getAvailableCredits($userId);
+                $totalLimit = $threshold + $availableCredits; // $19 + credits
+                
+                // Calculate how much of the new cost goes to credits
+                if ($newCostAccumulated > $threshold) {
+                    $excessCost = $newCostAccumulated - $threshold;
+                    $newCreditsUsed = min($excessCost, $availableCredits);
+                    $creditsUsed = $newCreditsUsed;
+                    
+                    // Check if we've exceeded total limit
+                    if ($newCostAccumulated >= $totalLimit) {
+                        $thresholdReached = true;
+                        $needsCredits = true; // Prompt to purchase more credits
+                    }
+                } else {
+                    $creditsUsed = 0.0; // Haven't exceeded threshold yet
+                }
+            } else {
+                // ✅ Pro: Simple threshold check
+                if ($newCostAccumulated >= $threshold) {
+                    $thresholdReached = true;
+                }
+            }
+        }
+
+        // Update usage tracking
+        $usageTracking->update([
+            'messages_used' => $usageTracking->messages_used + 1,
+            'ai_cost_accumulated' => $newCostAccumulated,
+            'input_tokens_used' => $usageTracking->input_tokens_used + $inputTokens,
+            'output_tokens_used' => $usageTracking->output_tokens_used + $outputTokens,
+            'credits_used' => $creditsUsed,
+            'cost_threshold_reached' => $thresholdReached,
+            'threshold_reached_at' => $thresholdReached && !$usageTracking->cost_threshold_reached ? now() : $usageTracking->threshold_reached_at,
+        ]);
+
         return [
-            'usage_tracking' => $usageTracking,
-            'was_created' => $usageTracking->wasRecentlyCreated,
+            'usage_updated' => true,
+            'cost_added' => $cost,
+            'total_cost' => $newCostAccumulated,
+            'threshold_reached' => $thresholdReached,
+            'needs_credits' => $needsCredits,
+            'credits_used' => $creditsUsed,
+            'available_credits' => $planTier === 'pro_plus' 
+                ? $this->creditPurchaseService->getAvailableCredits($userId) 
+                : 0,
         ];
     }
 
     /**
-     * Increment usage counters
+     * Original incrementUsage - kept for backward compatibility
      */
     public function incrementUsage(string $userId, array $data): UsageTracking
     {
@@ -54,14 +118,12 @@ class UsageTrackingService
         
         $subscription = $this->subscriptionRepository->findByUserId($userId);
         
-        // Get or create usage tracking record
         $usageTracking = $this->usageTrackingRepository->findOrCreateByBillingCycle(
             $userId,
             $billingCycleDate,
             $subscription?->id
         );
 
-        // Build increments array
         $increments = [];
         
         if (isset($data['messages_used']) && $data['messages_used'] > 0) {
@@ -83,7 +145,6 @@ class UsageTrackingService
             $increments['ai_cost_accumulated'] = $data['ai_cost_accumulated'];
         }
 
-        // Increment counters
         $this->usageTrackingRepository->incrementCounters($usageTracking, $increments);
 
         return $usageTracking->fresh();

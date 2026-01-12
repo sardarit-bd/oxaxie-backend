@@ -253,7 +253,7 @@ class AiCostCalculatorService
         return match ($planTier) {
             'free' => 0.0,
             'pro' => 5.0,
-            'pro_plus' => 20.0,
+            'pro_plus' => 19.0,
             'enterprise' => 0.0,
             default => 0.0,
         };

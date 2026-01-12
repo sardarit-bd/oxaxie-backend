@@ -44,12 +44,12 @@ class AppServiceProvider extends ServiceProvider
             );
         });
 
-        $this->app->singleton(UsageTrackingService::class, function ($app) {
-            return new UsageTrackingService(
-                $app->make(UsageTrackingRepository::class),
-                $app->make(SubscriptionRepository::class)
-            );
-        });
+        // $this->app->singleton(UsageTrackingService::class, function ($app) {
+        //     return new UsageTrackingService(
+        //         $app->make(UsageTrackingRepository::class),
+        //         $app->make(SubscriptionRepository::class)
+        //     );
+        // });
 
         $this->app->singleton(SubscriptionService::class, function ($app) {
             return new SubscriptionService(

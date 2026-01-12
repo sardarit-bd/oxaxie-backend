@@ -72,11 +72,14 @@ class ChatMessageController extends Controller
                         'upgrade_required' => true,
                         'current_plan' => $limitCheck['current_plan'] ?? null,
                         'upgrade_to' => $limitCheck['upgrade_to'] ?? null,
+                        'can_purchase_credits' => $limitCheck['can_purchase_credits'] ?? false,
+                        'credit_options' => $limitCheck['credit_options'] ?? null,
                         'limit_details' => [
                             'limit' => $limitCheck['limit'] ?? null,
                             'used' => $limitCheck['used'] ?? null,
                             'threshold' => $limitCheck['threshold'] ?? null,
                             'cost_accumulated' => $limitCheck['cost_accumulated'] ?? null,
+                            'credits_available' => $limitCheck['credits_available'] ?? null,
                         ]
                     ]
                 );
@@ -101,7 +104,6 @@ class ChatMessageController extends Controller
                     ->toArray();
             }
 
-
             if (isset($validated['system_prompt'])) {
                 $systemPrompt = $validated['system_prompt'];
             } else {
@@ -117,7 +119,7 @@ class ChatMessageController extends Controller
             DB::beginTransaction();
 
             try {
-              
+                // Save user message
                 $userChatMessage = ChatMessage::create([
                     'id' => Str::uuid(),
                     'all_case_id' => $caseId,
@@ -131,7 +133,6 @@ class ChatMessageController extends Controller
                     ],
                 ]);
 
-  
                 $aiResponse = $this->aiChatService->generateResponseWithMessages(
                     $aiModel,
                     $systemPrompt,
@@ -166,40 +167,60 @@ class ChatMessageController extends Controller
                         ->update(['sent_to_chat' => true]);
                 }
 
-                $today = Carbon::today()->toDateString();
-                
-                $this->usageTrackingService->incrementUsage($user->id, [
-                    'billing_cycle_date' => $today,
-                    'messages_used' => 1,
-                    'input_tokens_used' => $aiResponse['input_tokens'],
-                    'output_tokens_used' => $aiResponse['output_tokens'],
-                    'ai_cost_accumulated' => $cost,
+                $usageResult = $this->usageTrackingService->trackAiUsage(
+                    userId: $user->id,
+                    model: $aiModel,
+                    inputTokens: $aiResponse['input_tokens'],
+                    outputTokens: $aiResponse['output_tokens']
+                );
+
+                Log::info('Usage tracked successfully', [
+                    'user_id' => $user->id,
+                    'cost_added' => $usageResult['cost_added'],
+                    'total_cost' => $usageResult['total_cost'],
+                    'threshold_reached' => $usageResult['threshold_reached'],
+                    'needs_credits' => $usageResult['needs_credits'] ?? false,
                 ]);
-
-
-                $threshold = $this->costCalculator->getThreshold($planTier);
-                if ($threshold > 0) {
-                    $this->usageTrackingService->checkCostThreshold(
-                        $user->id,
-                        $today,
-                        $threshold
-                    );
-                }
 
                 DB::commit();
 
                 $usageWarning = $this->limitService->getUsageWarning($user->id);
 
-                return $this->successResponse([
+                $responseData = [
                     'user_message' => $userChatMessage,
                     'ai_message' => $aiChatMessage,
                     'usage_warning' => $usageWarning,
                     'usage_info' => [
                         'tokens_used' => $aiResponse['input_tokens'] + $aiResponse['output_tokens'],
                         'cost' => $cost,
+                        'total_cost' => $usageResult['total_cost'],
                         'model' => $aiModel,
                     ]
-                ], 'Message sent successfully', 201);
+                ];
+
+                if ($usageResult['threshold_reached']) {
+                    if ($usageResult['needs_credits']) {
+                        $responseData['critical_warning'] = [
+                            'type' => 'credits_needed',
+                            'message' => 'You have reached your usage limit. Purchase additional credits to continue.',
+                            'can_purchase_credits' => true,
+                            'credit_options' => [5.00, 10.00, 20.00],
+                            'credits_available' => $usageResult['available_credits'],
+                        ];
+                    } else {
+                        $responseData['critical_warning'] = [
+                            'type' => 'upgrade_needed',
+                            'message' => 'You have reached your $5 threshold. Upgrade to Pro Plus for higher limits.',
+                            'upgrade_to' => 'pro_plus',
+                        ];
+                    }
+                }
+
+                return $this->successResponse(
+                    $responseData,
+                    'Message sent successfully',
+                    201
+                );
 
             } catch (Exception $e) {
                 DB::rollBack();
@@ -214,13 +235,13 @@ class ChatMessageController extends Controller
                 return $this->errorResponse(
                     'Failed to generate AI response. Please try again.',
                     500,
-                    ['error_details' => $e->getMessage()]
+                    ['error_details' => config('app.debug') ? $e->getMessage() : null]
                 );
             }
 
         } catch (Exception $e) {
             Log::error('Chat endpoint error', [
-                'user_id' => $user->id,
+                'user_id' => $user->id ?? 'unknown',
                 'error' => $e->getMessage()
             ]);
 
@@ -288,7 +309,6 @@ class ChatMessageController extends Controller
         try {
             $user = auth('api')->user();
             
-            // Find the case
             $case = AllCase::find($caseId);
             
             if (!$case) {
@@ -298,7 +318,6 @@ class ChatMessageController extends Controller
                 ], 404);
             }
             
-            // Check ownership
             if ($case->user_id !== $user->id) {
                 return response()->json([
                     'success' => false,
@@ -306,7 +325,6 @@ class ChatMessageController extends Controller
                 ], 403);
             }
             
-            // Get messages
             $messages = ChatMessage::where('all_case_id', $caseId)
                 ->orderBy('created_at', 'asc')
                 ->get();
