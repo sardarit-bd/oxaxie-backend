@@ -25,6 +25,7 @@ class SubscriptionLimitService
      * @param string $userId User ID
      * @return array ['allowed' => bool, 'reason' => string|null, 'upgrade_to' => string|null]
      */
+
     public function canSendMessage(string $userId): array
     {
         $subscription = $this->subscriptionRepository->getActiveByUserId($userId);
@@ -51,21 +52,19 @@ class SubscriptionLimitService
         $billingCycleStart = Carbon::parse($subscription->current_period_start)->startOfDay();
         $usage = $this->usageTrackingRepository->getCurrentUsage($userId, $billingCycleStart->toDateString());
 
-        // Get plan limits
-        $chatLimit = $this->costCalculator->getChatLimit($planTier);
+        $messageLimit = $this->costCalculator->getMessageLimit($planTier);
         $threshold = $this->costCalculator->getThreshold($planTier);
 
-        // Free tier: Check fixed chat limit
         if ($planTier === 'free') {
             $messagesUsed = $usage->messages_used ?? 0;
             
-            if ($messagesUsed >= $chatLimit) {
+            if ($messagesUsed >= $messageLimit) {
                 return [
                     'allowed' => false,
-                    'reason' => "You've reached your free plan limit of {$chatLimit} chats per month.",
+                    'reason' => "You've reached your free plan limit of {$messageLimit} messages per month.",
                     'upgrade_to' => 'pro',
                     'current_plan' => 'free',
-                    'limit' => $chatLimit,
+                    'limit' => $messageLimit,
                     'used' => $messagesUsed,
                 ];
             }
@@ -73,11 +72,10 @@ class SubscriptionLimitService
             return [
                 'allowed' => true,
                 'current_plan' => 'free',
-                'remaining' => $chatLimit - $messagesUsed,
+                'remaining' => $messageLimit - $messagesUsed,
             ];
         }
 
-        // Pro and Pro Plus: Check cost threshold
         if ($planTier === 'pro' || $planTier === 'pro_plus') {
             $costAccumulated = $usage->ai_cost_accumulated ?? 0.0;
             
