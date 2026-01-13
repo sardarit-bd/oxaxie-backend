@@ -78,7 +78,7 @@ class UserResource extends Resource
                 Select::make('account_status')
                     ->options([
                         'active' => 'Active',
-                        'suspend' => 'Suspend',
+                        'suspended' => 'Suspend',
                         'deleted' => 'Deleted'
                     ])
                     ->default('active')
@@ -96,8 +96,6 @@ class UserResource extends Resource
                 TextColumn::make('email')
                     ->label('Email address')
                     ->searchable(),
-                TextColumn::make('account_status')
-                    ->badge(),
                 
                 TextColumn::make('subscription.plan_tier')
                     ->label('Plan Tier')
@@ -128,7 +126,7 @@ class UserResource extends Resource
                     }),
                 
                 TextColumn::make('subscription.status')
-                    ->label('Account Status')
+                    ->label('Subscription Status')
                     ->badge()
                     ->default('none')
                     ->formatStateUsing(function ($state) {
