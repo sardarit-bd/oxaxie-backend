@@ -42,6 +42,26 @@ class ResponseFeedbackController extends Controller
         }
 
         try {
+            $recentFeedback = ResponseFeedback::where('all_case_id', $caseId)
+                ->where('user_id', $request->user()->id)
+                ->where('response_description', $request->response_description)
+                ->where('created_at', '>', now()->subSeconds(10))
+                ->first();
+
+            if ($recentFeedback) {
+                Log::warning('Duplicate feedback submission blocked', [
+                    'feedback_id' => $recentFeedback->id,
+                    'case_id' => $caseId,
+                    'user_id' => $request->user()->id
+                ]);
+                
+                return $this->successResponse(
+                    $recentFeedback->load('documents'),
+                    'Response feedback already created',
+                    200
+                );
+            }
+
             $feedback = $this->feedbackService->createFeedback(
                 $request->user()->id,
                 $caseId,
@@ -302,18 +322,16 @@ class ResponseFeedbackController extends Controller
             ->where('user_id', $user->id)
             ->where('sent_to_chat', false)
             ->latest('created_at')
+            ->lockForUpdate()
             ->first();
 
         if (!$feedback) {
-            return response()->json([
-                'success' => true,
-                'data' => null
-            ]);
+            return response()->json(['success' => true, 'data' => null]);
         }
 
-        return response()->json([
-            'success' => true,
-            'data' => $feedback
-        ]);
+        $feedback->sent_to_chat = true;
+        $feedback->save();
+
+        return response()->json(['success' => true, 'data' => $feedback]);
     }
 }
