@@ -63,8 +63,21 @@ class AllCaseResource extends Resource
                     ->options(['active' => 'Active', 'resolved' => 'Resolved', 'archived' => 'Archived'])
                     ->default('active')
                     ->required(),
-                Select::make('resolution_type')
-                    ->options(['won' => 'Won', 'settled' => 'Settled', 'lost' => 'Lost', 'dropped' => 'Dropped']),
+                Select::make('outcome_type_temp')
+                    ->label('Resolution Type')
+                    ->options([
+                        'won'     => 'Won',
+                        'settled' => 'Settled',
+                        'lost'    => 'Lost',
+                        'dropped' => 'Dropped',
+                    ])
+                    ->default(null)
+                    ->afterStateHydrated(function (Select $component, $record) {
+                        if ($record?->outcome) {
+                            $component->state($record->outcome->outcome_type);
+                        }
+                    })
+                    ->dehydrated(false),
                 DateTimePicker::make('resolved_at'),
             ]);
     }
@@ -85,17 +98,19 @@ class AllCaseResource extends Resource
                     ->columnSpanFull(),
                 TextEntry::make('status')
                     ->badge(),
-                TextEntry::make('resolution_type')
+                TextEntry::make('outcome.outcome_type')
+                    ->label('Resolution Type')
                     ->badge()
                     ->placeholder('-'),
                 TextEntry::make('resolved_at')
-                    ->dateTime()
+                    ->label('Resolved')
+                    ->since()
                     ->placeholder('-'),
                 TextEntry::make('created_at')
-                    ->dateTime()
+                    ->date()
                     ->placeholder('-'),
                 TextEntry::make('updated_at')
-                    ->dateTime()
+                    ->date()
                     ->placeholder('-'),
                 TextEntry::make('deleted_at')
                     ->dateTime()
@@ -124,9 +139,9 @@ class AllCaseResource extends Resource
                     ->searchable(),
                 TextColumn::make('status')
                     ->badge(),
-                // TextColumn::make('resolution_type')
-                //     ->label('Resolution Type')
-                //     ->badge(),
+                TextColumn::make('outcome.outcome_type')
+                    ->label('Resolution Type')
+                    ->badge(),
                 TextColumn::make('resolved_at')
                     ->label('Resolved At')
                     ->dateTime()
