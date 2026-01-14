@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\WebhookController;
 use App\Http\Controllers\Api\DocumentController;
 use App\Http\Controllers\Api\CaseOutcomeController;
 use App\Http\Controllers\Api\ChatMessageController;
+use App\Http\Controllers\Api\ContactInfoController;
 use App\Http\Controllers\Api\CaseDocumentController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\UsageTrackingController;
@@ -157,5 +158,8 @@ Route::get('/outcomes/statistics', [CaseOutcomeController::class, 'statistics'])
 
 // contact 
 Route::post('/contact', [ContactMessageController::class, 'store']);
+
+// contact info
+Route::get('/contact-info', [ContactInfoController::class, 'index']);
 
 Route::post('/webhooks/stripe', [WebhookController::class, 'handleStripeWebhook']);
