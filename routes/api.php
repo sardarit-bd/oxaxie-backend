@@ -1,7 +1,9 @@
 <?php
 
+use App\Models\User;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\AllCaseController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\WebhookController;
@@ -11,10 +13,9 @@ use App\Http\Controllers\Api\ChatMessageController;
 use App\Http\Controllers\Api\CaseDocumentController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\UsageTrackingController;
+use App\Http\Controllers\Api\ContactMessageController;
 use App\Http\Controllers\Api\CreditPurchaseController;
 use App\Http\Controllers\Api\ResponseFeedbackController;
-use App\Http\Controllers\Api\UserController;
-use App\Models\User;
 
 Route::controller(AuthController::class)->group(function () {
     Route::post('register', 'register');
@@ -153,5 +154,8 @@ Route::middleware('auth:api')->group(function () {
 Route::get('/outcomes/testimonials', [CaseOutcomeController::class, 'testimonials']);
 
 Route::get('/outcomes/statistics', [CaseOutcomeController::class, 'statistics']);
+
+// contact 
+Route::post('/contact', [ContactMessageController::class, 'store']);
 
 Route::post('/webhooks/stripe', [WebhookController::class, 'handleStripeWebhook']);
