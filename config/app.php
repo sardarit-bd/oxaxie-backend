@@ -67,6 +67,19 @@ return [
 
     'timezone' => 'UTC',
 
+
+    /*
+    |--------------------------------------------------------------------------
+    | Frontend Application URL
+    |--------------------------------------------------------------------------
+    |
+    | This URL is used to generate password reset links that point to your
+    | frontend application instead of the Laravel backend.
+    |
+    */
+
+    'frontend_url' => env('FRONTEND_URL', 'http://localhost:3000'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration
