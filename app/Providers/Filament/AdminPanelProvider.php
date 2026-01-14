@@ -30,6 +30,8 @@ class AdminPanelProvider extends PanelProvider
             ->viteTheme('resources/css/filament/admin/theme.css')
             ->login()
             ->registration()
+            ->passwordReset()
+            ->authPasswordBroker('admins')
             ->authGuard('admin')
             ->darkMode(false)
             ->maxContentWidth('full')
