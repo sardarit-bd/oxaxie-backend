@@ -300,6 +300,7 @@ class AllCaseController extends Controller
             }
 
             $case->status = 'resolved';
+            $case->resolved_at = Carbon::now();
             $case->save();
 
             Log::info('Case marked as resolved', [

@@ -1,7 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Redirect;
 
 Route::get('/', function () {
-    return view('welcome');
+    return Redirect::to('/admin/login');
 });
