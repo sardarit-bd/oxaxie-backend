@@ -28,6 +28,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('response_feedback', function (Blueprint $table) {
+            $table->dropIndex(['status']);
             $table->dropColumn([
                 'ai_next_steps',
                 'escalation_options',
@@ -36,7 +37,7 @@ return new class extends Migration
                 'status'
             ]);
             $table->dropSoftDeletes();
-            $table->dropIndex(['status']);
+            
         });
     }
 };

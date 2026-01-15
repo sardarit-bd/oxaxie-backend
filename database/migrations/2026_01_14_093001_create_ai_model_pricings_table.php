@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('ai_model_pricing', function (Blueprint $table) {
+        Schema::create('ai_model_pricings', function (Blueprint $table) {
             $table->id();
             $table->foreignId('ai_model_id')->constrained()->onDelete('cascade');
             $table->string('subscription_plan_tier')->nullable();
@@ -28,6 +28,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('ai_model_pricing');
+        Schema::dropIfExists('ai_model_pricings');
     }
 };
