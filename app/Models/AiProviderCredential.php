@@ -27,9 +27,9 @@ class AiProviderCredential extends Model
         'expires_at' => 'datetime',
     ];
 
-    protected $hidden = [
-        'api_key',
-    ];
+    // protected $hidden = [
+    //     'api_key',
+    // ];
 
     // Relationships
     public function provider(): BelongsTo

@@ -61,7 +61,9 @@ class AiProviderCredentialForm
                             ->password()
                             ->revealable()
                             ->maxLength(500)
+                            ->dehydrateStateUsing(fn ($state) => $state) // Pass as-is, model will encrypt
                             ->helperText('This will be encrypted when saved')
+                            ->placeholder(fn ($record) => $record ? '••••••••' . substr($record->getMaskedApiKey(), -4) : 'Enter API key')
                             ->columnSpanFull(),
 
                         Grid::make(2)
