@@ -30,12 +30,35 @@ class AiProviderCredentialsTable
 
                 TextColumn::make('masked_key')
                     ->label('API Key')
-                    ->getStateUsing(fn (AiProviderCredential $record) => $record->getMaskedApiKey())
+                    ->getStateUsing(function (AiProviderCredential $record) {
+                        $key = $record->api_key;
+                        
+                        if (!$key) {
+                            return 'Not set';
+                        }
+                        
+                        $length = strlen($key);
+
+                        if ($length <= 8) {
+                            return str_repeat('•', $length);
+                        }
+
+                        $start = substr($key, 0, min(8, $length - 4));
+                        $end = substr($key, -4);
+                        $middleLength = min(12, $length - 12);
+                        
+                        return $start . str_repeat('•', $middleLength) . $end;
+                    })
                     ->copyable()
-                    ->copyableState(fn (AiProviderCredential $record) => $record->getMaskedApiKey())
-                    ->copyMessage('Masked key copied')
+                    ->copyableState(function (AiProviderCredential $record) {
+                        return $record->api_key;
+                    })
+                    ->copyMessage('Full API key copied!')
                     ->badge()
-                    ->color('gray'),
+                    ->color('success')
+                    ->icon('heroicon-o-clipboard-document')
+                    ->iconPosition('after')
+                    ->tooltip('Click to copy full API key to clipboard'),
 
                 TextColumn::make('user.name')
                     ->label('User')
