@@ -2,112 +2,146 @@
 
 namespace App\Services;
 
-use App\Contracts\AiProviderInterface;
-use App\Services\AiProviders\GeminiProvider;
-use App\Services\AiProviders\AnthropicProvider;
+use App\Models\User;
+use App\Models\AiModel;
+use App\Services\AiProviders\Factories\AiProviderFactory;
+use App\Services\AiProviders\AiModelSelector;
+use App\Repositories\Contracts\AiModelRepositoryInterface;
 use Illuminate\Support\Facades\Log;
 use Exception;
 
 /**
- * AI Chat Service - Facade for multiple AI providers
- * Uses Strategy Pattern to support different AI providers
+ * AI Chat Service - Dynamic provider system using database configuration
  */
 class AiChatService
 {
-    protected array $providers = [];
+    protected AiProviderFactory $providerFactory;
+    protected AiModelSelector $modelSelector;
+    protected AiModelRepositoryInterface $modelRepository;
 
-    public function __construct()
-    {
-        // Register available providers
-        // Gemini
-        if (!empty(config('services.gemini.api_key'))) {
-            try {
-                $this->providers['gemini'] = new GeminiProvider();
-                Log::info('Gemini provider registered');
-            } catch (Exception $e) {
-                Log::warning('Gemini provider failed to initialize: ' . $e->getMessage());
-            }
-        }
-
-        // Anthropic
-        if (!empty(config('services.anthropic.api_key'))) {
-            try {
-                $this->providers['anthropic'] = new AnthropicProvider();
-                Log::info('Anthropic provider registered');
-            } catch (Exception $e) {
-                Log::warning('Anthropic provider failed to initialize: ' . $e->getMessage());
-            }
-        }
-
-        if (empty($this->providers)) {
-            throw new Exception('No AI providers configured. Please set GEMINI_API_KEY or ANTHROPIC_API_KEY in .env');
-        }
+    public function __construct(
+        AiProviderFactory $providerFactory,
+        AiModelSelector $modelSelector,
+        AiModelRepositoryInterface $modelRepository
+    ) {
+        $this->providerFactory = $providerFactory;
+        $this->modelSelector = $modelSelector;
+        $this->modelRepository = $modelRepository;
     }
 
     /**
-     * Get the appropriate provider for a model
-     */
-    protected function getProvider(string $model): AiProviderInterface
-    {
-        foreach ($this->providers as $provider) {
-            if ($provider->supportsModel($model)) {
-                return $provider;
-            }
-        }
-
-        $availableProviders = array_keys($this->providers);
-        throw new Exception(
-            "No provider found for model: {$model}. " .
-            "Available providers: " . implode(', ', $availableProviders) . ". " .
-            "Please configure the appropriate API key in .env"
-        );
-    }
-
-    /**
-     * Generate AI response using specified model
+     * Generate AI response for a user
      */
     public function generateResponse(
-        string $model,
+        User $user,
         string $systemPrompt,
         array $conversationHistory,
-        string $userMessage
+        string $userMessage,
+        ?string $modelName = null
     ): array {
-        $provider = $this->getProvider($model);
-        
-        Log::info('Using provider for model', [
-            'model' => $model,
-            'provider' => get_class($provider)
-        ]);
+        try {
+            // Select model
+            $model = $modelName 
+                ? $this->modelSelector->selectByName($user, $modelName)
+                : $this->modelSelector->selectForUser($user);
 
-        return $provider->generateResponse(
-            $model,
-            $systemPrompt,
-            $conversationHistory,
-            $userMessage
-        );
+            Log::info('Generating AI response', [
+                'user_id' => $user->id,
+                'model' => $model->name,
+                'provider' => $model->provider->name,
+            ]);
+
+            // Get provider adapter
+            $adapter = $this->providerFactory->makeForModel($model, $user->id);
+
+            // Generate response
+            $response = $adapter->generateResponse(
+                $model->name,
+                $systemPrompt,
+                $conversationHistory,
+                $userMessage
+            );
+
+            Log::info('AI response generated', [
+                'model' => $model->name,
+                'input_tokens' => $response['input_tokens'],
+                'output_tokens' => $response['output_tokens'],
+            ]);
+
+            // Add model info to response
+            $response['model_used'] = [
+                'id' => $model->id,
+                'name' => $model->name,
+                'display_name' => $model->display_name,
+                'provider' => $model->provider->name,
+            ];
+
+            return $response;
+
+        } catch (Exception $e) {
+            Log::error('AI chat service error', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
     }
 
     /**
-     * Generate AI response using pre-built messages array (supports images)
+     * Generate AI response with pre-built messages (supports images)
      */
     public function generateResponseWithMessages(
-        string $model,
+        User $user,
         string $systemPrompt,
-        array $messages
+        array $messages,
+        ?string $modelName = null,
+        ?array $requirements = []
     ): array {
-        $provider = $this->getProvider($model);
-        
-        Log::info('Using provider for model with messages', [
-            'model' => $model,
-            'provider' => get_class($provider),
-            'messages_count' => count($messages)
-        ]);
+        try {
+            // Select model with requirements
+            $model = $modelName 
+                ? $this->modelSelector->selectByName($user, $modelName)
+                : $this->modelSelector->selectForUser($user, $requirements);
 
-        return $provider->generateResponseWithMessages(
-            $model,
-            $systemPrompt,
-            $messages
-        );
+            Log::info('Generating AI response with messages', [
+                'user_id' => $user->id,
+                'model' => $model->name,
+                'messages_count' => count($messages),
+            ]);
+
+            // Get provider adapter
+            $adapter = $this->providerFactory->makeForModel($model, $user->id);
+
+            // Generate response
+            $response = $adapter->generateResponseWithMessages(
+                $model->name,
+                $systemPrompt,
+                $messages
+            );
+
+            Log::info('AI response generated', [
+                'model' => $model->name,
+                'input_tokens' => $response['input_tokens'],
+                'output_tokens' => $response['output_tokens'],
+            ]);
+
+            // Add model info to response
+            $response['model_used'] = [
+                'id' => $model->id,
+                'name' => $model->name,
+                'display_name' => $model->display_name,
+                'provider' => $model->provider->name,
+            ];
+
+            return $response;
+
+        } catch (Exception $e) {
+            Log::error('AI chat service error', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
     }
 
     /**
@@ -117,37 +151,65 @@ class AiChatService
     {
         return "You are a helpful legal information assistant. You provide educational legal information to help users understand their rights and options. You are NOT providing legal advice, but rather helping users understand general legal concepts and procedures.
 
-        Case Information:
-        - Issue Type: {$caseData['issue_type']}
-        - Location: {$caseData['location_city']}, {$caseData['location_state']}, {$caseData['location_country']}
-        - Situation: {$caseData['situation_description']}
+Case Information:
+- Issue Type: {$caseData['issue_type']}
+- Location: {$caseData['location_city']}, {$caseData['location_state']}, {$caseData['location_country']}
+- Situation: {$caseData['situation_description']}
 
-        Important Guidelines:
-        - Provide clear, educational information about legal concepts
-        - Help users understand their general rights and options
-        - Suggest documentation and record-keeping practices
-        - Recommend when they should consult with a licensed attorney
-        - Always remind them this is educational information, not legal advice
-        - Be supportive and understanding of their situation
-        - Use simple, clear language
-        - Keep responses concise but comprehensive
+Important Guidelines:
+- Provide clear, educational information about legal concepts
+- Help users understand their general rights and options
+- Suggest documentation and record-keeping practices
+- Recommend when they should consult with a licensed attorney
+- Always remind them this is educational information, not legal advice
+- Be supportive and understanding of their situation
+- Use simple, clear language
+- Keep responses concise but comprehensive
 
-        Always conclude responses by asking if they have any questions or if there's anything specific they'd like to explore further.";
+Always conclude responses by asking if they have any questions or if there's anything specific they'd like to explore further.";
     }
 
     /**
-     * Check if a provider is available
+     * Get available models for a user
      */
-    public function hasProvider(string $providerName): bool
+    public function getAvailableModels(User $user): array
     {
-        return isset($this->providers[$providerName]);
+        $models = $this->modelSelector->getAvailableModels($user);
+
+        return $models->map(function ($model) {
+            return [
+                'id' => $model->id,
+                'name' => $model->name,
+                'display_name' => $model->display_name,
+                'provider' => $model->provider->name,
+                'capabilities' => $model->capabilities,
+                'max_tokens' => $model->max_tokens,
+                'context_window' => $model->context_window,
+            ];
+        })->toArray();
     }
 
     /**
-     * Get list of available providers
+     * Check if user can use a specific model
      */
-    public function getAvailableProviders(): array
+    public function canUseModel(User $user, string $modelName): bool
     {
-        return array_keys($this->providers);
+        return $this->modelSelector->canUseModel($user, $modelName);
+    }
+
+    /**
+     * Get recommended model for a user
+     */
+    public function getRecommendedModel(User $user, ?array $requirements = []): array
+    {
+        $model = $this->modelSelector->selectForUser($user, $requirements);
+
+        return [
+            'id' => $model->id,
+            'name' => $model->name,
+            'display_name' => $model->display_name,
+            'provider' => $model->provider->name,
+            'capabilities' => $model->capabilities,
+        ];
     }
 }

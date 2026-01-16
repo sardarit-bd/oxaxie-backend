@@ -46,6 +46,7 @@ class ChatMessageController extends Controller
             'system_prompt' => 'sometimes|string',
             'feedback_id' => 'sometimes|uuid|exists:response_feedback,id',
             'feedback_documents' => 'sometimes|array',
+            'model_name' => 'sometimes|string', // NEW: Allow specifying model
         ]);
 
         $user = $request->user();
@@ -84,10 +85,7 @@ class ChatMessageController extends Controller
                 );
             }
 
-            $subscription = $this->subscriptionRepository->getActiveByUserId($user->id);
-            $planTier = $subscription->plan_tier ?? 'free';
-            $aiModel = $this->costCalculator->getModelForPlan($planTier);
-
+            // Build conversation history
             if (isset($validated['messages'])) {
                 Log::info('Using messages from frontend with images');
                 $conversationHistory = $validated['messages'];
@@ -103,6 +101,7 @@ class ChatMessageController extends Controller
                     ->toArray();
             }
 
+            // Build system prompt
             if (isset($validated['system_prompt'])) {
                 $systemPrompt = $validated['system_prompt'];
             } else {
@@ -132,16 +131,23 @@ class ChatMessageController extends Controller
                     ],
                 ]);
 
+                // NEW: Use dynamic AI service with optional model name
                 $aiResponse = $this->aiChatService->generateResponseWithMessages(
-                    $aiModel,
+                    $user,
                     $systemPrompt,
-                    $conversationHistory
+                    $conversationHistory,
+                    $validated['model_name'] ?? null // Pass model name if specified
                 );
 
-                $cost = $this->costCalculator->calculateCost(
-                    $aiModel,
+                // Get the model info from response
+                $modelUsed = $aiResponse['model_used'];
+                
+                // NEW: Calculate cost using model ID from database
+                $cost = $this->costCalculator->calculateCostByModelId(
+                    $modelUsed['id'],
                     $aiResponse['input_tokens'],
-                    $aiResponse['output_tokens']
+                    $aiResponse['output_tokens'],
+                    $user->subscription?->plan_tier ?? 'free'
                 );
 
                 $aiChatMessage = ChatMessage::create([
@@ -150,14 +156,15 @@ class ChatMessageController extends Controller
                     'user_id' => $user->id,
                     'role' => 'assistant',
                     'content' => $aiResponse['content'],
-                    'ai_model_used' => $aiModel,
+                    'ai_model_used' => $modelUsed['name'], // Store model name
                     'input_tokens' => $aiResponse['input_tokens'],
                     'output_tokens' => $aiResponse['output_tokens'],
                     'cost' => $cost,
                     'metadata' => [
                         'timestamp' => now()->toISOString(),
                         'feedback_id' => $validated['feedback_id'] ?? null, 
-                        'type' => isset($validated['feedback_id']) ? 'feedback_analysis' : 'normal', 
+                        'type' => isset($validated['feedback_id']) ? 'feedback_analysis' : 'normal',
+                        'model_info' => $modelUsed, // Store full model info
                     ],
                 ]);
 
@@ -168,13 +175,14 @@ class ChatMessageController extends Controller
 
                 $usageResult = $this->usageTrackingService->trackAiUsage(
                     userId: $user->id,
-                    model: $aiModel,
+                    model: $modelUsed['name'],
                     inputTokens: $aiResponse['input_tokens'],
                     outputTokens: $aiResponse['output_tokens']
                 );
 
                 Log::info('Usage tracked successfully', [
                     'user_id' => $user->id,
+                    'model' => $modelUsed['name'],
                     'cost_added' => $usageResult['cost_added'],
                     'total_cost' => $usageResult['total_cost'],
                     'threshold_reached' => $usageResult['threshold_reached'],
@@ -193,7 +201,7 @@ class ChatMessageController extends Controller
                         'tokens_used' => $aiResponse['input_tokens'] + $aiResponse['output_tokens'],
                         'cost' => $cost,
                         'total_cost' => $usageResult['total_cost'],
-                        'model' => $aiModel,
+                        'model' => $modelUsed, // Return full model info
                     ]
                 ];
 

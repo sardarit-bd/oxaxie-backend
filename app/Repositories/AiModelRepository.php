@@ -58,17 +58,12 @@ class AiModelRepository implements AiModelRepositoryInterface
     {
         return Cache::remember("ai_models.plan.{$planTier}", self::CACHE_TTL, function () use ($planTier) {
             return AiModel::with(['provider', 'pricing'])
-                ->whereHas('subscriptionAccess', function ($query) use ($planTier) {
-                    $query->where('subscription_plan_tier', $planTier)
-                        ->where('is_allowed', true);
-                })
-                ->active()
-                ->orderByDesc(function ($query) use ($planTier) {
-                    $query->select('priority')
-                        ->from('subscription_ai_model_access')
-                        ->whereColumn('ai_model_id', 'ai_models.id')
-                        ->where('subscription_plan_tier', $planTier);
-                })
+                ->join('subscription_ai_model_accesses', 'ai_models.id', '=', 'subscription_ai_model_accesses.ai_model_id')
+                ->where('subscription_ai_model_accesses.subscription_plan_tier', $planTier)
+                ->where('subscription_ai_model_accesses.is_allowed', true)
+                ->where('ai_models.is_active', true)
+                ->orderBy('subscription_ai_model_accesses.priority', 'desc')
+                ->select('ai_models.*')
                 ->get();
         });
     }

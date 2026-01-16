@@ -2,23 +2,15 @@
 
 namespace App\Services;
 
-use Exception;
 use App\Models\User;
+use App\Models\AiModel;
+use App\Models\AiModelPricing;
+use App\Repositories\Contracts\AiModelPricingRepositoryInterface;
+use Exception;
 
 class AiCostCalculatorService
 {
-    // Model pricing per 1M tokens (input/output)
-    private const MODEL_COSTS = [
-        // Gemini models
-        'gemini-1.5-flash' => ['input' => 0.075, 'output' => 0.30],
-        'gemini-1.5-pro' => ['input' => 1.25, 'output' => 5.00],
-        'gemini-2.0-flash-exp' => ['input' => 0.00, 'output' => 0.00],
-        
-        // Claude models
-        'claude-3-5-sonnet-20241022' => ['input' => 3.00, 'output' => 15.00],
-        'claude-3-5-haiku-20241022' => ['input' => 0.80, 'output' => 4.00],
-        'claude-3-opus-20240229' => ['input' => 15.00, 'output' => 75.00],
-    ];
+    protected AiModelPricingRepositoryInterface $pricingRepository;
 
     // Chat limits per plan
     private const CHAT_LIMITS = [
@@ -51,6 +43,76 @@ class AiCostCalculatorService
         'pro_plus' => -1,
         'enterprise' => -1,
     ];
+
+    public function __construct(AiModelPricingRepositoryInterface $pricingRepository)
+    {
+        $this->pricingRepository = $pricingRepository;
+    }
+
+    /**
+     * Calculate cost for API usage
+     */
+    public function calculateCost(string $modelName, int $inputTokens, int $outputTokens, ?string $planTier = null): float
+    {
+        // Find the model
+        $model = AiModel::where('name', $modelName)->first();
+
+        if (!$model) {
+            return 0.0;
+        }
+
+        // Get pricing for the model and plan
+        $pricing = $this->pricingRepository->getPricingForModel($model->id, $planTier);
+
+        // If no plan-specific pricing, get default pricing
+        if (!$pricing) {
+            $pricing = $this->pricingRepository->getPricingForModel($model->id, null);
+        }
+
+        if (!$pricing) {
+            return 0.0;
+        }
+
+        $inputCost = ($inputTokens / 1_000_000) * $pricing->input_cost_per_1m_tokens;
+        $outputCost = ($outputTokens / 1_000_000) * $pricing->output_cost_per_1m_tokens;
+        
+        return round($inputCost + $outputCost, 6);
+    }
+
+    /**
+     * Calculate cost by model ID
+     */
+    public function calculateCostByModelId(int $modelId, int $inputTokens, int $outputTokens, ?string $planTier = null): float
+    {
+        $pricing = $this->pricingRepository->getPricingForModel($modelId, $planTier);
+
+        if (!$pricing) {
+            $pricing = $this->pricingRepository->getPricingForModel($modelId, null);
+        }
+
+        if (!$pricing) {
+            return 0.0;
+        }
+
+        $inputCost = ($inputTokens / 1_000_000) * $pricing->input_cost_per_1m_tokens;
+        $outputCost = ($outputTokens / 1_000_000) * $pricing->output_cost_per_1m_tokens;
+        
+        return round($inputCost + $outputCost, 6);
+    }
+
+    /**
+     * Get pricing for a model
+     */
+    public function getModelPricing(int $modelId, ?string $planTier = null): ?AiModelPricing
+    {
+        $pricing = $this->pricingRepository->getPricingForModel($modelId, $planTier);
+
+        if (!$pricing) {
+            $pricing = $this->pricingRepository->getPricingForModel($modelId, null);
+        }
+
+        return $pricing;
+    }
 
     /**
      * Get chat message limit for a plan
@@ -96,7 +158,6 @@ class AiCostCalculatorService
             return false;
         }
 
-        // Get current usage
         $currentUsage = $user->currentUsage;
         $casesUsed = $currentUsage?->cases_created ?? 0;
 
@@ -184,64 +245,13 @@ class AiCostCalculatorService
         $limit = $this->getDocumentLimit($planTier);
         
         if ($limit === -1) {
-            return -1; // unlimited
+            return -1;
         }
 
         $currentUsage = $user->currentUsage;
         $documentsUsed = $currentUsage?->documents_generated ?? 0;
 
         return max(0, $limit - $documentsUsed);
-    }
-
-    /**
-     * Get the appropriate model for a plan tier
-     */
-    public function getModelForPlan(string $planTier): string
-    {
-        $provider = config('services.ai.default_provider', 'gemini');
-        
-        if ($provider === 'gemini' && config('services.gemini.model')) {
-            return config('services.gemini.model');
-        }
-        
-        if ($provider === 'anthropic' && config('services.anthropic.model')) {
-            return config('services.anthropic.model');
-        }
-  
-        if ($provider === 'anthropic') {
-            return match ($planTier) {
-                'free' => 'claude-3-5-haiku-20241022',
-                'pro' => 'claude-3-5-sonnet-20241022',
-                'pro_plus' => 'claude-3-5-sonnet-20241022',
-                'enterprise' => 'claude-3-opus-20240229',
-                default => 'claude-3-5-sonnet-20241022',
-            };
-        }
-
-        return match ($planTier) {
-            'free' => 'gemini-1.5-flash',     
-            'pro' => 'gemini-1.5-flash',       
-            'pro_plus' => 'gemini-1.5-pro',    
-            'enterprise' => 'gemini-1.5-pro',  
-            default => 'gemini-1.5-flash',
-        };
-    }
-
-    /**
-     * Calculate cost for API usage
-     */
-    public function calculateCost(string $model, int $inputTokens, int $outputTokens): float
-    {
-        if (!isset(self::MODEL_COSTS[$model])) {
-            return 0.0;
-        }
-
-        $costs = self::MODEL_COSTS[$model];
-        
-        $inputCost = ($inputTokens / 1_000_000) * $costs['input'];
-        $outputCost = ($outputTokens / 1_000_000) * $costs['output'];
-        
-        return round($inputCost + $outputCost, 6);
     }
 
     /**
@@ -256,63 +266,6 @@ class AiCostCalculatorService
             'enterprise' => 0.0,
             default => 0.0,
         };
-    }
-
-    /**
-     * Get model information
-     */
-    public function getModelInfo(string $model): array
-    {
-        if (!isset(self::MODEL_COSTS[$model])) {
-            return [
-                'model' => $model,
-                'input_cost_per_1m' => 0,
-                'output_cost_per_1m' => 0,
-                'provider' => 'unknown'
-            ];
-        }
-
-        $costs = self::MODEL_COSTS[$model];
-        $provider = str_starts_with($model, 'gemini') ? 'gemini' : 
-                   (str_starts_with($model, 'claude') ? 'anthropic' : 'unknown');
-
-        return [
-            'model' => $model,
-            'input_cost_per_1m' => $costs['input'],
-            'output_cost_per_1m' => $costs['output'],
-            'provider' => $provider
-        ];
-    }
-
-    /**
-     * Get all available models
-     */
-    public function getAvailableModels(): array
-    {
-        return array_keys(self::MODEL_COSTS);
-    }
-
-    /**
-     * Check if model is available
-     */
-    public function isModelAvailable(string $model): bool
-    {
-        return isset(self::MODEL_COSTS[$model]);
-    }
-
-    /**
-     * Get plan limits summary
-     */
-    public function getPlanLimits(string $planTier): array
-    {
-        return [
-            'chat_limit' => $this->getChatLimit($planTier),
-            'case_limit' => $this->getCaseLimit($planTier),
-            'message_limit' => $this->getMessageLimit($planTier),
-            'document_limit' => $this->getDocumentLimit($planTier),
-            'cost_threshold' => $this->getThreshold($planTier),
-            'model' => $this->getModelForPlan($planTier),
-        ];
     }
 
     /**
@@ -341,7 +294,6 @@ class AiCostCalculatorService
                     'remaining' => $this->getRemainingDocuments($user),
                 ],
             ],
-            'model' => $this->getModelForPlan($planTier),
             'cost_threshold' => $this->getThreshold($planTier),
         ];
     }

@@ -8,6 +8,7 @@ use App\Models\Document;
 use App\Services\AiChatService;
 use App\Services\SubscriptionLimitService;
 use App\Services\UsageTrackingService;
+use App\Services\AiCostCalculatorService;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
@@ -24,7 +25,8 @@ class DocumentController extends Controller
     public function __construct(
         protected AiChatService $aiChatService,
         protected SubscriptionLimitService $limitService,
-        protected UsageTrackingService $usageTrackingService
+        protected UsageTrackingService $usageTrackingService,
+        protected AiCostCalculatorService $costCalculator
     ) {}
 
     /**
@@ -35,6 +37,7 @@ class DocumentController extends Controller
         $validated = $request->validate([
             'all_case_id' => 'required|uuid|exists:all_cases,id',
             'document_type' => 'required|string|in:demand_letter,formal_notice,response_letter,cease_desist',
+            'model_name' => 'sometimes|string', // NEW: Allow specifying model
         ]);
 
         $user = $request->user();
@@ -90,13 +93,24 @@ class DocumentController extends Controller
                 $systemPrompt = $this->buildDocumentPrompt($case, $documentType);
                 $userPrompt = $this->buildUserPrompt($chatHistory, $documentType);
 
-                $model = config('services.gemini.model', 'gemini-1.5-flash');
-                
+                // NEW: Use dynamic AI service
                 $aiResponse = $this->aiChatService->generateResponse(
-                    $model,
+                    $user,
                     $systemPrompt,
                     [],
-                    $userPrompt
+                    $userPrompt,
+                    $validated['model_name'] ?? null
+                );
+
+                // Get the model info from response
+                $modelUsed = $aiResponse['model_used'];
+
+                // NEW: Calculate cost using model ID from database
+                $cost = $this->costCalculator->calculateCostByModelId(
+                    $modelUsed['id'],
+                    $aiResponse['input_tokens'],
+                    $aiResponse['output_tokens'],
+                    $user->subscription?->plan_tier ?? 'free'
                 );
 
                 $document = Document::create([
@@ -115,11 +129,21 @@ class DocumentController extends Controller
                     'documents_generated' => 1,
                 ]);
 
+                // Track AI usage for cost
+                $this->usageTrackingService->trackAiUsage(
+                    userId: $user->id,
+                    model: $modelUsed['name'],
+                    inputTokens: $aiResponse['input_tokens'],
+                    outputTokens: $aiResponse['output_tokens']
+                );
+
                 DB::commit();
 
                 return $this->successResponse([
                     'document' => $document,
                     'tokens_used' => $aiResponse['input_tokens'] + $aiResponse['output_tokens'],
+                    'model_used' => $modelUsed,
+                    'cost' => $cost,
                 ], 'Document generated successfully', 201);
 
             } catch (Exception $e) {
@@ -138,7 +162,7 @@ class DocumentController extends Controller
             return $this->errorResponse(
                 'Failed to generate document. Please try again.',
                 500,
-                ['error_details' => $e->getMessage()]
+                ['error_details' => config('app.debug') ? $e->getMessage() : null]
             );
         }
     }
@@ -146,7 +170,6 @@ class DocumentController extends Controller
     /**
      * Get all documents for a case
      */
-    
     public function index($caseId)
     {
         try {
@@ -167,7 +190,6 @@ class DocumentController extends Controller
             $case = AllCase::where('id', $caseId)
                 ->where('user_id', $user->id)
                 ->first();
-            
 
             if (!$case) {
                 $caseExists = AllCase::where('id', $caseId)->first();
@@ -188,7 +210,6 @@ class DocumentController extends Controller
                     ]
                 ]);
             }
-            
 
             $documents = Document::where('all_case_id', $caseId)
                 ->orderBy('created_at', 'desc')
@@ -223,6 +244,7 @@ class DocumentController extends Controller
             ]);
         }
     }
+
     /**
      * Get a single document
      */
@@ -398,7 +420,7 @@ class DocumentController extends Controller
 
             **TONE:** Firm, professional, assertive but not aggressive. Legally appropriate and business-like.",
 
-                    'formal_notice' => "You are an expert legal document writer specializing in formal legal notices. Your task is to create a professional formal notice based on the case information and conversation history.
+                        'formal_notice' => "You are an expert legal document writer specializing in formal legal notices. Your task is to create a professional formal notice based on the case information and conversation history.
 
             **CRITICAL INSTRUCTIONS:**
             1. ANALYZE the conversation thoroughly to understand:
@@ -479,7 +501,7 @@ class DocumentController extends Controller
 
             **TONE:** Formal, serious, official. This is a legal notice that puts the recipient on official notice of their obligations.",
 
-                    'response_letter' => "You are an expert legal document writer specializing in response letters. Your task is to create a professional, strategic response letter based on the case information and conversation history.
+                        'response_letter' => "You are an expert legal document writer specializing in response letters. Your task is to create a professional, strategic response letter based on the case information and conversation history.
 
             **CRITICAL INSTRUCTIONS:**
             1. UNDERSTAND what is being responded to:
@@ -561,7 +583,7 @@ class DocumentController extends Controller
 
             **TONE:** Professional, firm but diplomatic. Assert your position strongly while remaining open to reasonable resolution. Not aggressive, but not weak.",
 
-                    'cease_desist' => "You are an expert legal document writer specializing in cease and desist letters. Your task is to create a strong, legally appropriate cease and desist letter based on the case information and conversation history.
+                        'cease_desist' => "You are an expert legal document writer specializing in cease and desist letters. Your task is to create a strong, legally appropriate cease and desist letter based on the case information and conversation history.
 
             **CRITICAL INSTRUCTIONS:**
             1. IDENTIFY the specific behavior that must stop:
@@ -680,11 +702,9 @@ class DocumentController extends Controller
      */
     protected function buildUserPrompt($chatHistory, $documentType): string
     {
-        // Build comprehensive conversation context
         $conversationContext = "**COMPLETE CONVERSATION HISTORY:**\n\n";
         $conversationContext .= "Review this entire conversation carefully to extract all relevant facts, details, dates, amounts, and context needed for the document.\n\n";
         
-        // Include full history (not just last 10)
         foreach ($chatHistory as $index => $msg) {
             $role = $msg['role'] === 'user' ? 'USER' : 'ASSISTANT';
             $conversationContext .= "**Message #{$index} - {$role}:**\n{$msg['content']}\n\n";
@@ -716,102 +736,6 @@ class DocumentController extends Controller
         
         return $conversationContext;
     }
-    // protected function buildDocumentPrompt($case, $documentType): string
-    // {
-    //     $prompts = [
-    //         'demand_letter' => "You are a professional legal document writer. Generate a formal demand letter based on the case information and conversation history provided. 
-
-    //         The letter should:
-    //         - Be professional, clear, and legally appropriate
-    //         - Include proper formatting with clear sections
-    //         - Be specific about demands and grievances
-    //         - Set reasonable deadlines for response/action
-    //         - Reference relevant laws or regulations when applicable
-    //         - Use formal legal language but remain understandable
-
-    //         Format the document with:
-    //         - Proper heading with sender/recipient information placeholders
-    //         - Date
-    //         - Clear subject line
-    //         - Body with numbered or bulleted points where appropriate
-    //         - Professional closing
-    //         - Signature line",
-                        
-    //                     'formal_notice' => "You are a professional legal document writer. Generate a formal legal notice based on the case information and conversation history.
-
-    //         The notice should:
-    //         - Clearly state the issue and relevant facts
-    //         - Reference applicable laws, contracts, or agreements
-    //         - Specify required actions and deadlines
-    //         - Be firm but professional in tone
-    //         - Include consequences of non-compliance
-
-    //         Use proper legal notice formatting with clear sections and formal language.",
-                        
-    //                     'response_letter' => "You are a professional legal document writer. Generate a formal response letter based on the case information and conversation history.
-
-    //         The letter should:
-    //         - Address all points raised in prior communications
-    //         - State your position clearly and firmly
-    //         - Provide supporting facts and legal basis
-    //         - Be diplomatic yet assertive
-    //         - Propose next steps or solutions where appropriate
-
-    //         Maintain professional business letter formatting throughout.",
-                        
-    //                     'cease_desist' => "You are a professional legal document writer. Generate a cease and desist letter based on the case information and conversation history.
-
-    //         The letter should:
-    //         - Clearly identify the offending behavior or action
-    //         - Demand immediate cessation of the behavior
-    //         - Reference relevant laws being violated
-    //         - Warn of specific legal consequences if behavior continues
-    //         - Set a clear deadline for compliance
-    //         - Be firm and serious in tone while remaining professional
-
-    //         Use standard cease and desist letter formatting with clear sections.",
-    //     ];
-
-    //     $basePrompt = $prompts[$documentType] ?? $prompts['demand_letter'];
-
-    //     $issueType = ucwords(str_replace('_', ' ', $case->issue_type));
-
-    //     return $basePrompt . "\n\n**Case Context:**\n" .
-    //         "Issue Type: {$issueType}\n" .
-    //         "Location: {$case->location_city}, {$case->location_state}, {$case->location_country}\n" .
-    //         "Situation: {$case->situation_description}\n\n" .
-    //         "**Important Instructions:**\n" .
-    //         "- Use [YOUR NAME], [YOUR ADDRESS], [YOUR CITY, STATE ZIP] for sender information\n" .
-    //         "- Use [RECIPIENT NAME], [RECIPIENT ADDRESS], [RECIPIENT CITY, STATE ZIP] for recipient\n" .
-    //         "- Use today's date: " . now()->format('F d, Y') . "\n" .
-    //         "- Base the content on the conversation history that will be provided\n" .
-    //         "- Make it ready to use with minimal edits needed\n" .
-    //         "- Include a note at the bottom: 'Note: This document was generated based on AI assistance and should be reviewed by a licensed attorney before use.'";
-    // }
-
-    /**
-     * Build user prompt from chat history
-     */
-    // protected function buildUserPrompt($chatHistory, $documentType): string
-    // {
-    //     $conversationSummary = "**Conversation History:**\n\n";
-
-    //     $recentHistory = array_slice($chatHistory, -10);
-        
-    //     foreach ($recentHistory as $msg) {
-    //         $role = $msg['role'] === 'user' ? 'User' : 'Assistant';
-    //         $conversationSummary .= "**{$role}:** {$msg['content']}\n\n";
-    //     }
-        
-    //     $documentName = $this->getDocumentTitle($documentType);
-        
-    //     $conversationSummary .= "\n**Task:**\n" .
-    //         "Based on the above conversation and case context, generate a professional {$documentName} " .
-    //         "that addresses all the key points, issues, and concerns discussed. " .
-    //         "The document should be formal, legally appropriate, and ready to use.";
-        
-    //     return $conversationSummary;
-    // }
 
     /**
      * Get document title by type
