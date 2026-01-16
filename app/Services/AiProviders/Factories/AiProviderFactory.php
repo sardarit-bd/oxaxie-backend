@@ -22,13 +22,21 @@ class AiProviderFactory
 
     /**
      * Create an AI provider adapter for a specific model
+     * 
+     * Updated signature to accept string|int|null for $userId to handle API payloads.
      */
-    public function makeForModel(AiModel $model, ?int $userId = null): AiProviderInterface
+    public function makeForModel(AiModel $model, int|string|null $userId = null): AiProviderInterface
     {
         Log::info('Creating provider adapter', [
             'model' => $model->name,
             'provider' => $model->provider->name,
         ]);
+
+        // FIX: Cast $userId to integer if it is not null.
+        // This fixes the "string given" error from API requests.
+        if ($userId !== null) {
+            $userId = (int) $userId;
+        }
 
         // Get the provider
         $provider = $model->provider;
@@ -37,7 +45,7 @@ class AiProviderFactory
             throw new Exception("Provider {$provider->name} is not active");
         }
 
-        // Get credentials
+        // Get credentials (Now receives strictly ?int)
         $credential = $this->getCredential($provider, $userId);
 
         if (!$credential) {
@@ -80,12 +88,10 @@ class AiProviderFactory
         AiProviderCredential $credential,
         AiModel $model
     ): AiProviderInterface {
-        // If custom adapter is specified
         if ($provider->adapter_type === 'custom' && !empty($provider->custom_adapter_class)) {
             return $this->createCustomAdapter($provider, $credential, $model);
         }
 
-        // Use generic REST adapter
         return new GenericRestAdapter($provider, $credential, $model);
     }
 

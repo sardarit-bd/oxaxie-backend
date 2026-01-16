@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use Exception;
+use Carbon\Carbon;
+use App\Models\User;
 use App\Repositories\SubscriptionRepository;
 use App\Repositories\UsageTrackingRepository;
-use Carbon\Carbon;
-use Exception;
+use App\Services\AiProviders\AiModelSelector;
 
 /**
  * Subscription Limit Service
@@ -16,7 +18,8 @@ class SubscriptionLimitService
     public function __construct(
         protected SubscriptionRepository $subscriptionRepository,
         protected UsageTrackingRepository $usageTrackingRepository,
-        protected AiCostCalculatorService $costCalculator
+        protected AiCostCalculatorService $costCalculator,
+        protected AiModelSelector $modelSelector
     ) {}
 
     /**
@@ -25,7 +28,6 @@ class SubscriptionLimitService
      * @param string $userId User ID
      * @return array ['allowed' => bool, 'reason' => string|null, 'upgrade_to' => string|null]
      */
-
     public function canSendMessage(string $userId): array
     {
         $subscription = $this->subscriptionRepository->getActiveByUserId($userId);
@@ -108,7 +110,6 @@ class SubscriptionLimitService
             $creditService = app(\App\Services\CreditPurchaseService::class);
             $availableCredits = $creditService->getAvailableCredits($userId);
             
-            // Calculate total available limit
             $creditsUsed = $usage->credits_used ?? 0.0;
             $remainingCredits = $availableCredits;
             $totalLimit = $threshold + $remainingCredits;
@@ -197,7 +198,6 @@ class SubscriptionLimitService
             ];
         }
 
-        // Pro: Check case limit
         if ($planTier === 'pro') {
             $casesCreated = $usage->cases_created ?? 0;
             
@@ -219,7 +219,6 @@ class SubscriptionLimitService
             ];
         }
 
-        // Pro Plus: Unlimited cases
         return [
             'allowed' => true,
             'current_plan' => 'pro_plus',
@@ -259,7 +258,6 @@ class SubscriptionLimitService
         $billingCycleStart = Carbon::parse($subscription->current_period_start)->startOfDay();
         $usage = $this->usageTrackingRepository->getCurrentUsage($userId, $billingCycleStart->toDateString());
 
-        // Free tier: Check fixed document limit
         if ($planTier === 'free') {
             $documentsGenerated = $usage->documents_generated ?? 0;
             
@@ -303,13 +301,12 @@ class SubscriptionLimitService
         }
 
         if ($planTier === 'pro_plus') {
-            $threshold = $this->costCalculator->getThreshold($planTier); // $19
+            $threshold = $this->costCalculator->getThreshold($planTier);
             $costAccumulated = $usage->ai_cost_accumulated ?? 0.0;
             
             $creditService = app(\App\Services\CreditPurchaseService::class);
             $availableCredits = $creditService->getAvailableCredits($userId);
             
-            // Calculate total available limit
             $creditsUsed = $usage->credits_used ?? 0.0;
             $remainingCredits = $availableCredits;
             $totalLimit = $threshold + $remainingCredits;
@@ -326,7 +323,7 @@ class SubscriptionLimitService
                     'credits_available' => $remainingCredits,
                     'cost_accumulated' => $costAccumulated,
                     'can_purchase_credits' => true,
-                    'credit_options' => [5.00, 10.00, 20.00], // Available amounts
+                    'credit_options' => [5.00, 10.00, 20.00],
                 ];
             }
             
@@ -369,10 +366,13 @@ class SubscriptionLimitService
         $documentLimit = $this->costCalculator->getDocumentLimit($planTier);
         $threshold = $this->costCalculator->getThreshold($planTier);
 
+        // NEW: Get model name for the user's plan
+        $modelName = $this->getModelNameForUser($userId);
+
         return [
             'has_subscription' => true,
             'plan_tier' => $planTier,
-            'model' => $this->costCalculator->getModelForPlan($planTier),
+            'model' => $modelName, // NOW DYNAMIC
             'messages' => [
                 'used' => $usage->messages_used ?? 0,
                 'limit' => $chatLimit,
@@ -423,7 +423,6 @@ class SubscriptionLimitService
             return null;
         }
 
-        // For free tier, check chat usage
         if ($planTier === 'free') {
             $chatLimit = $this->costCalculator->getChatLimit($planTier);
             $messagesUsed = $usage->messages_used;
@@ -439,7 +438,6 @@ class SubscriptionLimitService
             }
         }
 
-        // For Pro/Pro Plus, check cost threshold
         if ($planTier === 'pro' || $planTier === 'pro_plus') {
             $threshold = $this->costCalculator->getThreshold($planTier);
             $costAccumulated = $usage->ai_cost_accumulated;
@@ -456,5 +454,26 @@ class SubscriptionLimitService
         }
 
         return null;
+    }
+
+    /**
+     * Get model name for user dynamically
+     * 
+     * @param string $userId
+     * @return string
+     */
+    protected function getModelNameForUser(string $userId): string
+    {
+        try {
+            $user = User::find($userId);
+            if (!$user) {
+                return 'gemini-2.5-flash';
+            }
+
+            $model = $this->modelSelector->selectForUser($user);
+            return $model->display_name;
+        } catch (Exception $e) {
+            return 'gemini-2.5-flash';
+        }
     }
 }

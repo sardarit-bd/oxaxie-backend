@@ -53,10 +53,10 @@ class AiProviderForm
                                     ->default('generic_rest')
                                     ->live(),
 
-                                TextInput::make('priority')
-                                    ->numeric()
-                                    ->default(0)
-                                    ->helperText('Higher = tried first'),
+                                // TextInput::make('priority')
+                                //     ->numeric()
+                                //     ->default(0)
+                                //     ->helperText('Higher = tried first'),
 
                                 Toggle::make('is_active')
                                     ->label('Active')
