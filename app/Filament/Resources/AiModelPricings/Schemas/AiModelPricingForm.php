@@ -27,7 +27,7 @@ class AiModelPricingForm
 
                         TextInput::make('subscription_plan_tier')
                             ->label('Subscription Plan Tier')
-                            ->placeholder('e.g. Free, Pro, Enterprise')
+                            ->placeholder('e.g. Free, Pro, Pro Plus')
                             ->nullable(),
 
                         Grid::make(2)

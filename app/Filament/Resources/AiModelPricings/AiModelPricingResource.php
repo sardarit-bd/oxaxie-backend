@@ -8,12 +8,12 @@ use App\Filament\Resources\AiModelPricings\Pages\ListAiModelPricings;
 use App\Filament\Resources\AiModelPricings\Schemas\AiModelPricingForm;
 use App\Filament\Resources\AiModelPricings\Tables\AiModelPricingsTable;
 use App\Models\AiModelPricing;
-use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use UnitEnum;
+use BackedEnum;
 
 class AiModelPricingResource extends Resource
 {

@@ -2,14 +2,11 @@
 
 namespace App\Filament\Resources\AiProviders\Schemas;
 
+use App\Models\AiProvider;
 use Illuminate\Support\Str;
 use Filament\Schemas\Schema;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Toggle;
+use Filament\Forms;
 use Filament\Schemas\Components\Grid;
-use Filament\Forms\Components\KeyValue;
-use Filament\Forms\Components\Textarea;
-use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
 
 class AiProviderForm
@@ -21,30 +18,44 @@ class AiProviderForm
             ->components([
                 Section::make('Basic Information')
                     ->schema([
+                        Forms\Components\Placeholder::make('duplicate_warning')
+                            ->visible(fn (callable $get) => $get('is_duplicate'))
+                            ->content('An AI Provider with this Name or Slug already exists. Please choose a different name.')
+                            ->extraAttributes(['class' => 'text-danger-600 bg-danger-50 p-4 rounded-lg border border-danger-200'])
+                            ->columnSpanFull(),
+
                         Grid::make(2)
                             ->schema([
-                                TextInput::make('name')
+                                Forms\Components\TextInput::make('name')
                                     ->required()
                                     ->maxLength(255)
                                     ->live(onBlur: true)
-                                    ->afterStateUpdated(fn ($state, callable $set, $get) => 
-                                        empty($get('slug')) ? $set('slug', Str::slug($state)) : null
-                                    ),
+                                    // REMOVED ->disabled()
+                                    ->afterStateUpdated(function ($state, callable $set, callable $get, $livewire) {
+                                        if (empty($get('slug')) || $get('slug') === Str::slug($get('name'))) {
+                                            $set('slug', Str::slug($state));
+                                        }
+                                        self::checkDuplicate($get('name'), $get('slug'), $set, $livewire);
+                                    }),
 
-                                TextInput::make('slug')
+                                Forms\Components\TextInput::make('slug')
                                     ->required()
                                     ->maxLength(255)
-                                    ->unique(ignoreRecord: true)
-                                    ->alphaDash(),
+                                    ->alphaDash()
+                                    // REMOVED ->disabled()
+                                    ->live()
+                                    ->afterStateUpdated(function ($state, callable $set, callable $get, $livewire) {
+                                        self::checkDuplicate($get('name'), $state, $set, $livewire);
+                                    }),
                             ]),
 
-                        Textarea::make('description')
+                        Forms\Components\Textarea::make('description')
                             ->rows(3)
                             ->columnSpanFull(),
 
                         Grid::make(3)
                             ->schema([
-                                Select::make('adapter_type')
+                                Forms\Components\Select::make('adapter_type')
                                     ->required()
                                     ->options([
                                         'generic_rest' => 'Generic REST API',
@@ -53,13 +64,13 @@ class AiProviderForm
                                     ->default('generic_rest')
                                     ->live(),
 
-                                Toggle::make('is_active')
+                                Forms\Components\Toggle::make('is_active')
                                     ->label('Active')
                                     ->default(true)
                                     ->inline(false),
                             ]),
 
-                        TextInput::make('custom_adapter_class')
+                        Forms\Components\TextInput::make('custom_adapter_class')
                             ->maxLength(255)
                             ->visible(fn (callable $get) => $get('adapter_type') === 'custom')
                             ->helperText('e.g., App\Services\AiProvider\Adapters\Custom\MyAdapter')
@@ -70,23 +81,23 @@ class AiProviderForm
                 // Endpoint Configuration - Left Column
                 Section::make('Endpoint Configuration')
                     ->schema([
-                        TextInput::make('endpoint_config.base_url')
+                        Forms\Components\TextInput::make('endpoint_config.base_url')
                             ->label('Base URL')
                             ->required()
                             ->url()
                             ->placeholder('https://api.example.com'),
 
-                        TextInput::make('endpoint_config.api_version')
+                        Forms\Components\TextInput::make('endpoint_config.api_version')
                             ->label('API Version')
                             ->required()
                             ->placeholder('v1'),
 
-                        TextInput::make('endpoint_config.endpoints.chat')
+                        Forms\Components\TextInput::make('endpoint_config.endpoints.chat')
                             ->label('Chat Endpoint')
                             ->required()
                             ->placeholder('/chat/completions'),
 
-                        TextInput::make('endpoint_config.endpoints.vision')
+                        Forms\Components\TextInput::make('endpoint_config.endpoints.vision')
                             ->label('Vision Endpoint (Optional)')
                             ->placeholder('Leave empty if same as chat'),
                     ])
@@ -95,7 +106,7 @@ class AiProviderForm
                 // Authentication Configuration - Right Column
                 Section::make('Authentication')
                     ->schema([
-                        Select::make('auth_config.type')
+                        Forms\Components\Select::make('auth_config.type')
                             ->label('Auth Type')
                             ->required()
                             ->options([
@@ -106,23 +117,22 @@ class AiProviderForm
                             ->default('header')
                             ->live(),
 
-                        TextInput::make('auth_config.key_name')
+                        Forms\Components\TextInput::make('auth_config.key_name')
                             ->label('Key/Header Name')
                             ->required()
                             ->placeholder('x-api-key')
                             ->default('x-api-key'),
 
-                        TextInput::make('auth_config.header_prefix')
+                        Forms\Components\TextInput::make('auth_config.header_prefix')
                             ->label('Header Prefix')
                             ->placeholder('Bearer')
                             ->visible(fn (callable $get) => $get('auth_config.type') === 'bearer'),
                     ])
                     ->columnSpan(1),
 
-                // Request Transformer - Left Column
                 Section::make('Request Transformer')
                     ->schema([
-                        Select::make('request_transformer.message_format')
+                        Forms\Components\Select::make('request_transformer.message_format')
                             ->label('Message Format')
                             ->required()
                             ->options([
@@ -133,7 +143,7 @@ class AiProviderForm
                             ])
                             ->default('openai'),
 
-                        Select::make('request_transformer.system_prompt_location')
+                        Forms\Components\Select::make('request_transformer.system_prompt_location')
                             ->label('System Prompt Location')
                             ->required()
                             ->options([
@@ -143,7 +153,7 @@ class AiProviderForm
                             ])
                             ->default('separate'),
 
-                        KeyValue::make('request_transformer.role_mapping')
+                        Forms\Components\KeyValue::make('request_transformer.role_mapping')
                             ->label('Role Mapping')
                             ->keyLabel('From')
                             ->valueLabel('To')
@@ -158,21 +168,42 @@ class AiProviderForm
                 // Response Parser - Right Column
                 Section::make('Response Parser')
                     ->schema([
-                        TextInput::make('response_parser.content_path')
+                        Forms\Components\TextInput::make('response_parser.content_path')
                             ->label('Content Path')
                             ->required()
                             ->placeholder('content.0.text')
                             ->helperText('Dot notation'),
 
-                        TextInput::make('response_parser.input_tokens_path')
+                        Forms\Components\TextInput::make('response_parser.input_tokens_path')
                             ->label('Input Tokens Path')
                             ->placeholder('usage.input_tokens'),
 
-                        TextInput::make('response_parser.output_tokens_path')
+                        Forms\Components\TextInput::make('response_parser.output_tokens_path')
                             ->label('Output Tokens Path')
                             ->placeholder('usage.output_tokens'),
                     ])
                     ->columnSpan(1),
             ]);
+    }
+
+    protected static function checkDuplicate($name, $slug, callable $set, $livewire): void
+    {
+        if (empty($name) && empty($slug)) {
+            $set('is_duplicate', false);
+            return;
+        }
+
+        $query = AiProvider::query();
+
+        if ($livewire instanceof \Filament\Resources\Pages\EditRecord && $livewire->getRecord()) {
+            $query->where('id', '!=', $livewire->getRecord()->id);
+        }
+
+        $isDuplicate = $query->where(function ($q) use ($name, $slug) {
+            $q->where('name', $name)
+              ->orWhere('slug', $slug);
+        })->exists();
+
+        $set('is_duplicate', $isDuplicate);
     }
 }
