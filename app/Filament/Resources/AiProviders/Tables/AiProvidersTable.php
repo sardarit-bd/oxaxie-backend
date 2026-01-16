@@ -63,12 +63,6 @@ class AiProvidersTable
                     ->badge()
                     ->color('warning'),
 
-                // TextColumn::make('priority')
-                //     ->sortable()
-                //     ->badge()
-                //     ->color('gray')
-                //     ->tooltip('Higher priority = tried first'),
-
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
