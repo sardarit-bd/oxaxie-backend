@@ -2,10 +2,11 @@
 
 namespace App\Filament\Resources\AiModels\Schemas;
 
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Textarea;
-use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Schema;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Toggle;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 
 class AiModelForm
 {
@@ -13,9 +14,12 @@ class AiModelForm
     {
         return $schema
             ->components([
-                TextInput::make('ai_provider_id')
-                    ->required()
-                    ->numeric(),
+                Select::make('ai_provider_id')
+                    ->label('AI Provider')
+                    ->relationship('provider', 'name')
+                    ->searchable()
+                    ->preload()
+                    ->required(),
                 TextInput::make('name')
                     ->required(),
                 TextInput::make('display_name')
