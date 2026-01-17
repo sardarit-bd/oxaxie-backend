@@ -23,6 +23,7 @@ class UsageTrackingService
     /**
      * Track AI usage after successful response
      */
+
     public function trackAiUsage(
         string $userId,
         int $modelId,
@@ -42,14 +43,6 @@ class UsageTrackingService
             $subscription->plan_tier
         );
 
-        Log::info('💰 Cost Details', [
-            'raw_cost' => $cost,
-            'cost_type' => gettype($cost),
-            'model' => $modelId,
-            'input_tokens' => $inputTokens,
-            'output_tokens' => $outputTokens,
-        ]);
-
         $billingCycleDate = Carbon::parse($subscription->current_period_start)->toDateString();
 
         $usageTracking = $this->usageTrackingRepository->findOrCreateByBillingCycle(
@@ -62,43 +55,48 @@ class UsageTrackingService
         $planTier = $subscription->plan_tier;
         $threshold = $this->costCalculator->getThreshold($planTier);
 
-        $creditsUsed = $usageTracking->credits_used ?? 0.0;
+        $creditsUsed = 0.0;
         $thresholdReached = false;
         $needsCredits = false;
 
-
-        Log::info('💰 Accumulation Details', [
-        'previous_cost' => $usageTracking->ai_cost_accumulated,
-        'adding_cost' => $cost,
-        'new_total' => $newCostAccumulated,
-        'threshold' => $threshold,
-        'will_trigger' => $newCostAccumulated >= $threshold,
-    ]);
-
         if (in_array($planTier, ['pro', 'pro_plus'])) {
             if ($planTier === 'pro_plus') {
-     
+                // Get available credits
                 $availableCredits = $this->creditPurchaseService->getAvailableCredits($userId);
-                $totalLimit = $threshold + $availableCredits;
                 
-                // Calculate how much of the new cost goes to credits
+                // Calculate TOTAL excess over threshold (not just new excess)
                 if ($newCostAccumulated > $threshold) {
-                    $excessCost = $newCostAccumulated - $threshold;
-                    $newCreditsUsed = min($excessCost, $availableCredits);
-                    $creditsUsed = $newCreditsUsed;
+                    $totalExcess = $newCostAccumulated - $threshold;
                     
-                    // Check if we've exceeded total limit
-                    if ($newCostAccumulated >= $totalLimit) {
+                    // Use credits to cover the excess (up to available amount)
+                    $creditsUsed = min($totalExcess, $availableCredits);
+                    
+                    // After using credits, check if there's still excess
+                    $remainingExcess = $totalExcess - $creditsUsed;
+                    
+                    // If there's still excess after using all available credits, threshold is reached
+                    if ($remainingExcess > 0) {
                         $thresholdReached = true;
                         $needsCredits = true;
+                        
+                    } else {
+                        Log::info('💳 Credits Cover Excess - No Threshold', [
+                            'credits_used' => $creditsUsed,
+                            'excess_covered' => true,
+                        ]);
                     }
                 } else {
+                    // Cost hasn't exceeded threshold yet
                     $creditsUsed = 0.0;
+
                 }
+                
+                
             } else {
-     
+                // Pro tier logic (no credits)
                 if ($newCostAccumulated >= $threshold) {
                     $thresholdReached = true;
+
                 }
             }
         }
@@ -113,13 +111,6 @@ class UsageTrackingService
             'cost_threshold_reached' => $thresholdReached,
             'threshold_reached_at' => $thresholdReached && !$usageTracking->cost_threshold_reached ? now() : $usageTracking->threshold_reached_at,
         ]);
-
-
-        Log::info('💰 Final Update Values', [
-        'cost_added' => $cost,
-        'total_cost' => $newCostAccumulated,
-        'threshold_reached' => $thresholdReached,
-    ]);
 
         return [
             'usage_updated' => true,

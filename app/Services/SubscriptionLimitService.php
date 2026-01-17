@@ -103,6 +103,43 @@ class SubscriptionLimitService
             ];
         }
 
+        // if ($planTier === 'pro_plus') {
+        //     $threshold = $this->costCalculator->getThreshold($planTier);
+        //     $costAccumulated = $usage->ai_cost_accumulated ?? 0.0;
+
+        //     $creditService = app(\App\Services\CreditPurchaseService::class);
+        //     $availableCredits = $creditService->getAvailableCredits($userId);
+            
+        //     $creditsUsed = $usage->credits_used ?? 0.0;
+        //     $remainingCredits = $availableCredits;
+        //     $totalLimit = $threshold + $remainingCredits;
+            
+        //     if ($costAccumulated >= $totalLimit) {
+        //         return [
+        //             'allowed' => false,
+        //             'reason' => "You've reached your $" . number_format($threshold, 2) . " monthly threshold" 
+        //                     . ($availableCredits > 0 ? " and used all available credits" : "") 
+        //                     . ". Purchase additional credits to continue.",
+        //             'upgrade_to' => null,
+        //             'current_plan' => $planTier,
+        //             'threshold' => $threshold,
+        //             'credits_available' => $remainingCredits,
+        //             'cost_accumulated' => $costAccumulated,
+        //             'can_purchase_credits' => true,
+        //             'credit_options' => [5.00, 10.00, 20.00],
+        //         ];
+        //     }
+            
+        //     return [
+        //         'allowed' => true,
+        //         'current_plan' => $planTier,
+        //         'threshold' => $threshold,
+        //         'credits_available' => $remainingCredits,
+        //         'cost_accumulated' => $costAccumulated,
+        //         'remaining_balance' => $totalLimit - $costAccumulated,
+        //     ];
+        // }
+
         if ($planTier === 'pro_plus') {
             $threshold = $this->costCalculator->getThreshold($planTier);
             $costAccumulated = $usage->ai_cost_accumulated ?? 0.0;

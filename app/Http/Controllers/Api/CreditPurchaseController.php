@@ -2,13 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use Exception;
 use App\Traits\ApiResponse;
-use App\Http\Controllers\Controller;
-use App\Services\CreditPurchaseService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
+use App\Http\Controllers\Controller;
+use App\Services\CreditPurchaseService;
 use Illuminate\Support\Facades\Validator;
-use Exception;
 
 class CreditPurchaseController extends Controller
 {
@@ -25,36 +26,92 @@ class CreditPurchaseController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'amount' => 'required|numeric|min:0.01',
-            'credits_added' => 'required|numeric|min:0',
-            'expires_at' => 'required|date|after:now',
-            'stripe_payment_intent_id' => 'required|string',
+            'amount' => 'required|numeric|in:5,10,20',
         ]);
 
         if ($validator->fails()) {
             return $this->errorResponse(
-                'Validation error',
+                'Invalid credit amount. Choose $5, $10, or $20.',
                 422,
                 $validator->errors()
             );
         }
 
         try {
-            $creditPurchase = $this->creditPurchaseService->createPurchase(
-                $request->user()->id,
-                $validator->validated()
-            );
+            $user = $request->user();
+            $amount = $request->amount;
+            
+            // Get user's subscription
+            $subscription = $user->subscription;
+            
+            if (!$subscription) {
+                return $this->errorResponse('No active subscription found', 404);
+            }
+            
+            if ($subscription->plan_tier !== 'pro_plus') {
+                return $this->errorResponse(
+                    'Credit purchases are only available for Pro Plus members.',
+                    403
+                );
+            }
 
-            return $this->successResponse(
-                $creditPurchase,
-                'Credit purchase created successfully',
-                201
+            // Initialize Stripe Checkout
+            $stripe = new \Stripe\StripeClient(config('services.stripe.secret'));
+            
+            $checkoutSession = $stripe->checkout->sessions->create([
+                'payment_method_types' => ['card'],
+                'line_items' => [[
+                    'price_data' => [
+                        'currency' => 'usd',
+                        'product_data' => [
+                            'name' => "AI Usage Credits - $$amount",
+                            'description' => "Add $$amount credits to your Pro Plus plan",
+                        ],
+                        'unit_amount' => $amount * 100,
+                    ],
+                    'quantity' => 1,
+                ]],
+                'mode' => 'payment',
+                'success_url' => env('FRONTEND_URL', 'http://localhost:3000') . '/credits/success?session_id={CHECKOUT_SESSION_ID}',
+                'cancel_url' => env('FRONTEND_URL', 'http://localhost:3000') . '/dashboard',
+                'client_reference_id' => $user->id,
+                'metadata' => [
+                    'type' => 'credit_purchase',
+                    'user_id' => $user->id,
+                    'subscription_id' => $subscription->id,
+                    'credits_amount' => $amount,
+                    'expires_at' => $subscription->current_period_end,
+                ],
+            ]);
+
+            Log::info('Stripe checkout session created', [
+                'session_id' => $checkoutSession->id,
+                'user_id' => $user->id,
+                'amount' => $amount,
+            ]);
+
+            return $this->successResponse([
+                'checkout_url' => $checkoutSession->url,
+                'session_id' => $checkoutSession->id,
+            ], 'Stripe checkout session created', 201);
+
+        } catch (\Stripe\Exception\ApiErrorException $e) {
+            Log::error('Stripe API error', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id ?? null,
+            ]);
+            
+            return $this->errorResponse(
+                'Payment system error. Please try again.',
+                500
             );
         } catch (Exception $e) {
-            $statusCode = str_contains($e->getMessage(), 'already been processed') ? 409 : 
-                         (str_contains($e->getMessage(), 'not found') ? 404 : 400);
+            Log::error('Credit purchase error', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id ?? null,
+            ]);
             
-            return $this->errorResponse($e->getMessage(), $statusCode);
+            return $this->errorResponse($e->getMessage(), 400);
         }
     }
 
@@ -168,4 +225,5 @@ class CreditPurchaseController extends Controller
             return $this->errorResponse($e->getMessage(), 404);
         }
     }
+
 }

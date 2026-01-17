@@ -259,16 +259,6 @@ class AiCostCalculatorService
      */
     public function getThreshold(string $planTier): float
     {
-        if (config('app.env') === 'local') {
-            return match ($planTier) {
-                'free' => 0.0,
-                'pro' => 0.05,  
-                'pro_plus' => 0.15,
-                'enterprise' => 0.0,
-                default => 0.0,
-            };
-        }
-
         return match ($planTier) {
             'free' => 0.0,
             'pro' => 5.0,
