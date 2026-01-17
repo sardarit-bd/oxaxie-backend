@@ -14,31 +14,31 @@ class EditAiProvider extends EditRecord
 {
     protected static string $resource = AiProviderResource::class;
 
-    protected function mutateFormDataBeforeSave(array $data): array
-    {
-        $name = $data['name'] ?? null;
-        $slug = $data['slug'] ?? null;
+    // protected function mutateFormDataBeforeSave(array $data): array
+    // {
+    //     $name = $data['name'] ?? null;
+    //     $slug = $data['slug'] ?? null;
 
-        if ($name || $slug) {
-            $exists = AiProvider::where('name', $name)
-                ->orWhere('slug', $slug)
-                ->where('id', '!=', $this->record->id)
-                ->exists();
+    //     if ($name || $slug) {
+    //         $exists = AiProvider::where('name', $name)
+    //             ->orWhere('slug', $slug)
+    //             ->where('id', '!=', $this->record->id)
+    //             ->exists();
 
-            if ($exists) {
-                Notification::make()
-                    ->danger()
-                    ->title('Duplicate Provider')
-                    ->body('Another AI Provider with this Name or Slug already exists.')
-                    ->persistent()
-                    ->send();
+    //         if ($exists) {
+    //             Notification::make()
+    //                 ->danger()
+    //                 ->title('Duplicate Provider')
+    //                 ->body('Another AI Provider with this Name or Slug already exists.')
+    //                 ->persistent()
+    //                 ->send();
 
-                $this->halt();
-            }
-        }
+    //             $this->halt();
+    //         }
+    //     }
 
-        return $data;
-    }
+    //     return $data;
+    // }
 
     protected function getRedirectUrl(): string
     {
