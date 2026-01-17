@@ -46,7 +46,7 @@ class ChatMessageController extends Controller
             'system_prompt' => 'sometimes|string',
             'feedback_id' => 'sometimes|uuid|exists:response_feedback,id',
             'feedback_documents' => 'sometimes|array',
-            'model_name' => 'sometimes|string', // NEW: Allow specifying model
+            'model_name' => 'sometimes|string',
         ]);
 
         $user = $request->user();
@@ -131,7 +131,7 @@ class ChatMessageController extends Controller
                     ],
                 ]);
 
-                // NEW: Use dynamic AI service with optional model name
+                // dynamic AI service with optional model name
                 $aiResponse = $this->aiChatService->generateResponseWithMessages(
                     $user,
                     $systemPrompt,
@@ -139,16 +139,29 @@ class ChatMessageController extends Controller
                     $validated['model_name'] ?? null // Pass model name if specified
                 );
 
+                Log::info('🤖 AI Response Model Info', [
+                    'model_used' => $aiResponse['model_used'],
+                    'model_name' => $aiResponse['model_used']['name'],
+                    'input_tokens' => $aiResponse['input_tokens'],
+                    'output_tokens' => $aiResponse['output_tokens'],
+                ]);
+
                 // Get the model info from response
                 $modelUsed = $aiResponse['model_used'];
                 
-                // NEW: Calculate cost using model ID from database
+                // Calculate cost using model ID from database
                 $cost = $this->costCalculator->calculateCostByModelId(
                     $modelUsed['id'],
                     $aiResponse['input_tokens'],
                     $aiResponse['output_tokens'],
                     $user->subscription?->plan_tier ?? 'free'
                 );
+
+                Log::info('💰 Cost Calculation Result', [
+                    'cost' => $cost,
+                    'model_id' => $modelUsed['id'],
+                    'plan_tier' => $user->subscription?->plan_tier ?? 'free',
+                ]);
 
                 $aiChatMessage = ChatMessage::create([
                     'id' => Str::uuid(),
@@ -175,7 +188,7 @@ class ChatMessageController extends Controller
 
                 $usageResult = $this->usageTrackingService->trackAiUsage(
                     userId: $user->id,
-                    model: $modelUsed['name'],
+                    modelId: $modelUsed['id'],
                     inputTokens: $aiResponse['input_tokens'],
                     outputTokens: $aiResponse['output_tokens']
                 );

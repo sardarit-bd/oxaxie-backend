@@ -132,7 +132,7 @@ class DocumentController extends Controller
                 // Track AI usage for cost
                 $this->usageTrackingService->trackAiUsage(
                     userId: $user->id,
-                    model: $modelUsed['name'],
+                    modelId: $modelUsed['id'],
                     inputTokens: $aiResponse['input_tokens'],
                     outputTokens: $aiResponse['output_tokens']
                 );

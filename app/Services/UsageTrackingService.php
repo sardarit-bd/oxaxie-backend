@@ -5,6 +5,7 @@ namespace App\Services;
 use Exception;
 use Carbon\Carbon;
 use App\Models\UsageTracking;
+use Illuminate\Support\Facades\Log;
 use App\Services\CreditPurchaseService;
 use App\Repositories\SubscriptionRepository;
 use Illuminate\Database\Eloquent\Collection;
@@ -24,17 +25,30 @@ class UsageTrackingService
      */
     public function trackAiUsage(
         string $userId,
-        string $model,
+        int $modelId,
         int $inputTokens,
         int $outputTokens
     ): array {
-        // Get subscription
+
         $subscription = $this->subscriptionRepository->findByUserId($userId);
         if (!$subscription) {
             throw new Exception('No active subscription found');
         }
 
-        $cost = $this->costCalculator->calculateCost($model, $inputTokens, $outputTokens);
+        $cost = $this->costCalculator->calculateCostByModelId(
+            $modelId,
+            $inputTokens,
+            $outputTokens,
+            $subscription->plan_tier
+        );
+
+        Log::info('💰 Cost Details', [
+            'raw_cost' => $cost,
+            'cost_type' => gettype($cost),
+            'model' => $modelId,
+            'input_tokens' => $inputTokens,
+            'output_tokens' => $outputTokens,
+        ]);
 
         $billingCycleDate = Carbon::parse($subscription->current_period_start)->toDateString();
 
@@ -51,6 +65,15 @@ class UsageTrackingService
         $creditsUsed = $usageTracking->credits_used ?? 0.0;
         $thresholdReached = false;
         $needsCredits = false;
+
+
+        Log::info('💰 Accumulation Details', [
+        'previous_cost' => $usageTracking->ai_cost_accumulated,
+        'adding_cost' => $cost,
+        'new_total' => $newCostAccumulated,
+        'threshold' => $threshold,
+        'will_trigger' => $newCostAccumulated >= $threshold,
+    ]);
 
         if (in_array($planTier, ['pro', 'pro_plus'])) {
             if ($planTier === 'pro_plus') {
@@ -90,6 +113,13 @@ class UsageTrackingService
             'cost_threshold_reached' => $thresholdReached,
             'threshold_reached_at' => $thresholdReached && !$usageTracking->cost_threshold_reached ? now() : $usageTracking->threshold_reached_at,
         ]);
+
+
+        Log::info('💰 Final Update Values', [
+        'cost_added' => $cost,
+        'total_cost' => $newCostAccumulated,
+        'threshold_reached' => $thresholdReached,
+    ]);
 
         return [
             'usage_updated' => true,
