@@ -12,17 +12,6 @@ class EditAiModelPricing extends EditRecord
 {
     protected static string $resource = AiModelPricingResource::class;
 
-    protected function getFormActions(): array
-    {
-        return [
-            $this->getSaveFormAction()
-                ->disabled(fn (callable $get) => $get('is_duplicate')),
-            ...(static::canDelete($this->getRecord()) ? [
-                $this->getDeleteFormAction(),
-            ] : []),
-        ];
-    }
-
     protected function mutateFormDataBeforeSave(array $data): array
     {
         $modelId = $data['ai_model_id'] ?? null;

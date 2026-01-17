@@ -36,16 +36,16 @@ class AiModelsTable
                     ->weight('bold')
                     ->description(fn (AiModel $record): string => $record->name),
 
-                TextColumn::make('capabilities')
-                    ->label('Capabilities')
-                    ->badge()
-                    ->getStateUsing(fn (AiModel $record) => [
-                        $record->hasCapability('text') ? 'Text' : null,
-                        $record->hasCapability('vision') ? 'Vision' : null,
-                        // $record->hasCapability('function_calling') ? 'Functions' : null,
-                        // $record->hasCapability('streaming') ? 'Stream' : null,
-                    ])
-                    ->separator(','),
+                // TextColumn::make('capabilities')
+                //     ->label('Capabilities')
+                //     ->badge()
+                //     ->getStateUsing(fn (AiModel $record) => [
+                //         $record->hasCapability('text') ? 'Text' : null,
+                //         $record->hasCapability('vision') ? 'Vision' : null,
+                //         $record->hasCapability('function_calling') ? 'Functions' : null,
+                //         $record->hasCapability('streaming') ? 'Stream' : null,
+                //     ])
+                //     ->separator(','),
 
                 IconColumn::make('is_active')
                     ->boolean()
@@ -98,20 +98,20 @@ class AiModelsTable
                     ])
                     ->native(false),
 
-                SelectFilter::make('capabilities')
-                    ->label('Capabilities')
-                    ->options([
-                        'text' => 'Text',
-                        'vision' => 'Vision',
-                        'function_calling' => 'Functions',
-                        'streaming' => 'Streaming',
-                    ])
-                    ->query(function ($query, $state) {
-                        if ($state['value']) {
-                            $query->whereJsonContains("capabilities->{$state['value']}", true);
-                        }
-                    })
-                    ->native(false),
+                // SelectFilter::make('capabilities')
+                //     ->label('Capabilities')
+                //     ->options([
+                //         'text' => 'Text',
+                //         'vision' => 'Vision',
+                //         'function_calling' => 'Functions',
+                //         'streaming' => 'Streaming',
+                //     ])
+                //     ->query(function ($query, $state) {
+                //         if ($state['value']) {
+                //             $query->whereJsonContains("capabilities->{$state['value']}", true);
+                //         }
+                //     })
+                //     ->native(false),
             ])
             ->recordActions([
                 ViewAction::make(),

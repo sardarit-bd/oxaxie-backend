@@ -14,17 +14,6 @@ class EditAiProvider extends EditRecord
 {
     protected static string $resource = AiProviderResource::class;
 
-    protected function getFormActions(): array
-    {
-        return [
-            $this->getSaveFormAction()
-                ->disabled(fn (callable $get) => $get('is_duplicate')),
-            ...(static::canDelete($this->getRecord()) ? [
-                $this->getDeleteFormAction(),
-            ] : []),
-        ];
-    }
-
     protected function mutateFormDataBeforeSave(array $data): array
     {
         $name = $data['name'] ?? null;
