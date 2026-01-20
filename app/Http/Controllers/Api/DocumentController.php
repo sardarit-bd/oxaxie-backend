@@ -17,6 +17,12 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use Exception;
+use Dompdf\Dompdf;
+use Dompdf\Options;
+use PhpOffice\PhpWord\PhpWord;
+use PhpOffice\PhpWord\IOFactory;
+use PhpOffice\PhpWord\Shared\Html;
+use League\CommonMark\CommonMarkConverter;
 
 class DocumentController extends Controller
 {
@@ -749,5 +755,167 @@ class DocumentController extends Controller
             'cease_desist' => 'Cease and Desist Letter',
             default => 'Legal Document',
         };
+    }
+
+
+    public function downloadDocument(Request $request, $documentId)
+    {
+        $format = $request->query('format', 'pdf');
+        
+        $document = Document::findOrFail($documentId);
+        
+        if ($document->user_id !== auth()->id()) {
+            abort(403, 'Unauthorized');
+        }
+        
+        $filename = str_replace(' ', '_', $document->name);
+        
+        if ($format === 'pdf') {
+            return $this->generatePDF($document, $filename);
+        } elseif ($format === 'docx') {
+            return $this->generateDOCX($document, $filename);
+        }
+        
+        abort(400, 'Invalid format');
+    }
+
+    private function generatePDF($document, $filename)
+    {
+        $options = new Options();
+        $options->set('isHtml5ParserEnabled', true);
+        $options->set('isRemoteEnabled', true);
+        $options->set('defaultFont', 'DejaVu Sans');
+        
+        $dompdf = new Dompdf($options);
+    
+        $html = $this->markdownToHtml($document->content);
+        
+        $styledHtml = "
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset='utf-8'>
+                <style>
+                    @page {
+                        margin: 1in;
+                    }
+                    body {
+                        font-family: 'DejaVu Sans', Arial, sans-serif;
+                        line-height: 1.8;
+                        color: #000000;
+                        font-size: 12pt;
+                    }
+                    h1 {
+                        font-size: 18pt;
+                        font-weight: bold;
+                        margin-top: 0;
+                        margin-bottom: 20px;
+                        text-align: center;
+                    }
+                    h2 {
+                        font-size: 14pt;
+                        font-weight: bold;
+                        margin-top: 25px;
+                        margin-bottom: 15px;
+                    }
+                    h3 {
+                        font-size: 12pt;
+                        font-weight: bold;
+                        margin-top: 20px;
+                        margin-bottom: 10px;
+                    }
+                    p {
+                        margin-bottom: 12px;
+                        text-align: justify;
+                    }
+                    ul, ol {
+                        margin-left: 30px;
+                        margin-bottom: 12px;
+                    }
+                    li {
+                        margin-bottom: 8px;
+                    }
+                    strong {
+                        font-weight: bold;
+                    }
+                    em {
+                        font-style: italic;
+                    }
+                    blockquote {
+                        margin-left: 20px;
+                        margin-right: 20px;
+                        padding-left: 15px;
+                        border-left: 3px solid #cccccc;
+                        font-style: italic;
+                    }
+                    hr {
+                        border: none;
+                        border-top: 1px solid #000000;
+                        margin: 20px 0;
+                    }
+                </style>
+            </head>
+            <body>
+                {$html}
+            </body>
+            </html>
+        ";
+        
+        $dompdf->loadHtml($styledHtml);
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+        
+        // Track download
+        $document->increment('download_count');
+        $document->update(['last_downloaded_at' => now()]);
+        
+        return response($dompdf->output(), 200)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'attachment; filename="' . $filename . '.pdf"');
+    }
+
+    private function generateDOCX($document, $filename)
+    {
+        $phpWord = new PhpWord();
+        
+        $properties = $phpWord->getDocInfo();
+        $properties->setCreator('Advocate Legal Assistant');
+        $properties->setTitle($document->name);
+
+        $section = $phpWord->addSection([
+            'marginLeft' => 1440, 
+            'marginRight' => 1440,
+            'marginTop' => 1440,
+            'marginBottom' => 1440,
+        ]);
+
+        $html = $this->markdownToHtml($document->content);
+        
+        Html::addHtml($section, $html, false, false);
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'word_');
+        $objWriter = IOFactory::createWriter($phpWord, 'Word2007');
+        $objWriter->save($tempFile);
+        
+        $document->increment('download_count');
+        $document->update(['last_downloaded_at' => now()]);
+        
+        return response()->download($tempFile, $filename . '.docx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ])->deleteFileAfterSend(true);
+    }
+
+    private function markdownToHtml($markdown)
+    {
+        if (empty($markdown)) {
+            return '<p>No content available</p>';
+        }
+
+        $converter = new CommonMarkConverter([
+            'html_input' => 'strip',
+            'allow_unsafe_links' => false,
+        ]);
+        
+        return $converter->convert($markdown)->getContent();
     }
 }

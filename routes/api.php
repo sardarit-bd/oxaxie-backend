@@ -134,8 +134,10 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/documents/generate', [DocumentController::class, 'generate']);
     Route::get('/cases/{caseId}/documents', [DocumentController::class, 'index']);
     Route::get('/documents/{documentId}', [DocumentController::class, 'show']);
-    Route::get('/documents/{documentId}/download', [DocumentController::class, 'download']);
+    // Route::get('/documents/{documentId}/download', [DocumentController::class, 'download']);
     Route::delete('/documents/{documentId}', [DocumentController::class, 'destroy']);
+    Route::get('/documents/{id}/download', [DocumentController::class, 'downloadDocument'])
+    ->name('documents.download');
 
     // Case outcome routes
     Route::patch('/case/{id}/mark-resolved', [AllCaseController::class, 'markAsResolved']);
