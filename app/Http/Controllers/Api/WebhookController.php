@@ -146,11 +146,13 @@ class WebhookController extends Controller
     protected function createCreditPurchaseFromSession($session, $metadata): void
     {
         $userId = $metadata->user_id;
+        $subscriptionId = $metadata->subscription_id;
         $creditsAmount = $metadata->credits_amount;
         $expiresAt = $metadata->expires_at;
 
         Log::info('Creating credit purchase', [
             'user_id' => $userId,
+            'subscription_id' => $subscriptionId,
             'credits_amount' => $creditsAmount,
             'session_id' => $session->id,
             'payment_intent' => $session->payment_intent,
@@ -168,26 +170,38 @@ class WebhookController extends Controller
             return;
         }
 
-        // Create credit purchase
-        $creditPurchase = $this->creditPurchaseService->createPurchase($userId, [
-            'amount' => $session->amount_total / 100,
-            'credits_added' => $creditsAmount,
-            'expires_at' => $expiresAt,
-            'stripe_payment_intent_id' => $session->payment_intent,
-        ]);
+        try {
+            // Create credit purchase with subscription_id
+            $creditPurchase = $this->creditPurchaseService->createPurchase($userId, [
+                'subscription_id' => $subscriptionId,
+                'amount' => $session->amount_total / 100,
+                'credits_added' => $creditsAmount,
+                'expires_at' => $expiresAt,
+                'stripe_payment_intent_id' => $session->payment_intent,
+            ]);
 
-        // Mark as completed
-        $this->creditPurchaseService->updateStatus(
-            $userId,
-            $creditPurchase->id,
-            'completed'
-        );
+            // Mark as completed
+            $this->creditPurchaseService->updateStatus(
+                $userId,
+                $creditPurchase->id,
+                'completed'
+            );
 
-        Log::info('✅ Credit purchase created and completed', [
-            'credit_purchase_id' => $creditPurchase->id,
-            'user_id' => $userId,
-            'credits' => $creditsAmount,
-            'amount_paid' => $session->amount_total / 100,
-        ]);
+            Log::info('✅ Credit purchase created and completed', [
+                'credit_purchase_id' => $creditPurchase->id,
+                'user_id' => $userId,
+                'subscription_id' => $subscriptionId,
+                'credits' => $creditsAmount,
+                'amount_paid' => $session->amount_total / 100,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('❌ Failed to create credit purchase', [
+                'user_id' => $userId,
+                'session_id' => $session->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
     }
 }
