@@ -16,7 +16,6 @@ class CreateAiProviderCredential extends CreateRecord
         $providerId = $data['ai_provider_id'];
         $userId = $data['user_id'] ?? null;
 
-        // Backend check: Ensure no duplicate exists
         $exists = AiProviderCredential::where('ai_provider_id', $providerId)
             ->where(function ($query) use ($userId) {
                 if ($userId) {

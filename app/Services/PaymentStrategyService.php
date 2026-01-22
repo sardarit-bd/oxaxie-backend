@@ -85,8 +85,7 @@ class PaymentStrategyService
     {
         try {
             $gatewayInstance = PaymentGatewayFactory::create($gateway);
-            
-            // Check if gateway supports online payments
+
             if (!$gatewayInstance instanceof OnlinePaymentInterface) {
                 return [
                     'success' => false,
@@ -94,7 +93,6 @@ class PaymentStrategyService
                 ];
             }
             
-            // Call the gateway's confirmPayment method (which verifies the payment status)
             $result = $gatewayInstance->confirmPayment($paymentIntentId);
             
             return $result;

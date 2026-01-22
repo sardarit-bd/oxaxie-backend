@@ -11,7 +11,6 @@ class CreateAiProvider extends CreateRecord
 {
     protected static string $resource = AiProviderResource::class;
 
-    // Add this method to control the bottom "Create" button
     protected function getFormActions(): array
     {
         return [

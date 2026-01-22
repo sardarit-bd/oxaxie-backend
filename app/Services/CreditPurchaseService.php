@@ -66,7 +66,6 @@ class CreditPurchaseService
 
         $updateData = ['status' => $status];
         
-        // Set applied_at timestamp when completing
         if ($status === 'completed' && !$creditPurchase->applied_at) {
             $updateData['applied_at'] = now();
         }

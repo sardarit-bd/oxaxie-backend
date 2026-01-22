@@ -28,7 +28,7 @@ class EditAiModel extends EditRecord
                 ->body('A model with this name already exists for the selected AI Provider.')
                 ->send();
 
-            // Halt the save process
+
             $this->halt();
         }
 

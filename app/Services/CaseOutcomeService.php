@@ -56,13 +56,6 @@ class CaseOutcomeService
 
             DB::commit();
 
-            Log::info('Case outcome created', [
-                'outcome_id' => $outcome->id,
-                'case_id' => $data['all_case_id'],
-                'user_id' => $userId,
-                'outcome_type' => $data['outcome_type']
-            ]);
-
             return $outcome;
 
         } catch (Exception $e) {
@@ -99,11 +92,6 @@ class CaseOutcomeService
             $this->outcomeRepository->update($outcome, $data);
 
             DB::commit();
-
-            Log::info('Case outcome updated', [
-                'outcome_id' => $outcomeId,
-                'user_id' => $userId
-            ]);
 
             return $outcome->fresh();
 

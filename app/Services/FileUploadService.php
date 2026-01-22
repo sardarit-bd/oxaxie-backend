@@ -10,7 +10,6 @@ use Exception;
 
 class FileUploadService
 {
-    // Allowed MIME types
     private const ALLOWED_MIME_TYPES = [
         'application/pdf',
         'image/jpeg',
@@ -23,10 +22,8 @@ class FileUploadService
         'text/plain',
     ];
 
-    // Max file size: 10MB
     private const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-    // Max files per case
     private const MAX_FILES_PER_CASE = 3;
 
     /**
