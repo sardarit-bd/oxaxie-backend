@@ -20,6 +20,11 @@ class CreateAiModelPricing extends CreateRecord
         ];
     }
 
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
+    }
+
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         $modelId = $data['ai_model_id'] ?? null;
