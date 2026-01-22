@@ -44,7 +44,7 @@ class GeminiProvider implements AiProviderInterface
         $conversationText .= "User: {$userMessage}\n\nAssistant:";
 
         try {
-            // Use v1 for text-only
+
             $response = Http::timeout(60)
                 ->post("https://generativelanguage.googleapis.com/v1/models/{$model}:generateContent?key={$this->apiKey}", [
                     'contents' => [
@@ -100,15 +100,10 @@ class GeminiProvider implements AiProviderInterface
         string $systemPrompt,
         array $messages
     ): array {
-        Log::info('=== Gemini: Generate Response With Messages ===');
-        Log::info('Model received:', ['model' => $model]);
-        Log::info('Messages count:', ['count' => count($messages)]);
 
         try {
-            // Build Gemini-compatible contents array
             $contents = [];
-            
-            // Add system prompt as first user message
+
             $contents[] = [
                 'role' => 'user',
                 'parts' => [['text' => $systemPrompt]]
@@ -154,10 +149,6 @@ class GeminiProvider implements AiProviderInterface
                     'parts' => $parts
                 ];
             }
-
-            Log::info('Gemini request prepared', [
-                'contents_count' => count($contents)
-            ]);
 
             // Use v1beta for vision/multimodal (required for images)
             $response = Http::timeout(60)

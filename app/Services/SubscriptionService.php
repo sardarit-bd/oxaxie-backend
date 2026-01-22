@@ -29,11 +29,6 @@ class SubscriptionService
         DB::beginTransaction();
 
         try {
-            Log::info('=== Starting storeOrUpdate ===', [
-                'user_id' => $userId,
-                'plan_tier' => $data['plan_tier'] ?? 'unknown',
-                'stripe_subscription_id' => $data['stripe_subscription_id'] ?? 'unknown'
-            ]);
 
             $oldSubscription = $this->subscriptionRepository->getActiveByUserId($userId);
             
@@ -69,12 +64,7 @@ class SubscriptionService
 
             // Cancel old subscription if different Stripe ID
             if ($oldSubscription && $oldSubscription->stripe_subscription_id !== $data['stripe_subscription_id']) {
-                Log::info('Cancelling old subscription for fresh start', [
-                    'user_id' => $userId,
-                    'old_subscription_id' => $oldSubscription->id,
-                    'old_plan_tier' => $oldSubscription->plan_tier,
-                    'new_plan_tier' => $data['plan_tier']
-                ]);
+   
 
                 $oldSubscription->update([
                     'status' => 'cancelled',
@@ -94,12 +84,7 @@ class SubscriptionService
                 'id' => \Illuminate\Support\Str::uuid(),
             ]);
             
-            Log::info('Creating new subscription', [
-                'user_id' => $userId,
-                'plan_tier' => $data['plan_tier'],
-                'stripe_subscription_id' => $data['stripe_subscription_id']
-            ]);
-
+      
             $subscription = Subscription::create($subscriptionData);
             $wasRecentlyCreated = true;
 
@@ -109,13 +94,6 @@ class SubscriptionService
             try {
                 $billingCycleDate = Carbon::parse($subscription->current_period_start)->toDateString();
                 
-                Log::info('Attempting to create/update usage tracking', [
-                    'user_id' => $userId,
-                    'subscription_id' => $subscription->id,
-                    'billing_cycle_date' => $billingCycleDate,
-                    'new_plan_tier' => $data['plan_tier'],
-                    'old_plan_tier' => $oldSubscription?->plan_tier ?? 'none'
-                ]);
 
                 $existingUsage = \App\Models\UsageTracking::where('user_id', $userId)
                     ->where('billing_cycle_date', $billingCycleDate)
@@ -127,10 +105,7 @@ class SubscriptionService
                 );
 
                 if ($existingUsage) {
-                    Log::info('Updating existing usage tracking', [
-                        'usage_id' => $existingUsage->id,
-                        'should_reset' => $shouldResetUsage
-                    ]);
+
 
                     if ($shouldResetUsage) {
                     
@@ -145,16 +120,16 @@ class SubscriptionService
                             'cost_threshold_reached' => false,
                         ]);
                     } else {
-                        // ✅ PRO/PRO_PLUS RENEWAL: Keep usage, only update subscription_id
+                        
                         $existingUsage->update([
                             'subscription_id' => $subscription->id,
-                            // Usage data preserved
+                            
                         ]);
                     }
                 } else {
                     // New usage record
                     if ($shouldResetUsage || !$oldSubscription) {
-                        // ✅ FREE TIER or NEW USER: Create fresh usage
+                     
                         \App\Models\UsageTracking::create([
                             'id' => \Illuminate\Support\Str::uuid(),
                             'user_id' => $userId,
@@ -169,7 +144,7 @@ class SubscriptionService
                             'cost_threshold_reached' => false,
                         ]);
                     } else {
-                        // ✅ PRO/PRO_PLUS RENEWAL: Copy previous usage to new period
+                      
                         $previousUsage = \App\Models\UsageTracking::where('user_id', $userId)
                             ->where('subscription_id', $oldSubscription->id)
                             ->orderBy('billing_cycle_date', 'desc')
@@ -206,11 +181,6 @@ class SubscriptionService
 
             DB::commit();
 
-            Log::info('=== Subscription creation completed successfully ===', [
-                'user_id' => $userId,
-                'new_subscription_id' => $subscription->id,
-                'old_subscription_cancelled' => $oldSubscriptionCancelled
-            ]);
 
             return [
                 'subscription' => $subscription,

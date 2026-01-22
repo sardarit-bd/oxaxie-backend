@@ -27,13 +27,7 @@ class AiProviderFactory
      */
     public function makeForModel(AiModel $model, int|string|null $userId = null): AiProviderInterface
     {
-        Log::info('Creating provider adapter', [
-            'model' => $model->name,
-            'provider' => $model->provider->name,
-        ]);
 
-        // FIX: Cast $userId to integer if it is not null.
-        // This fixes the "string given" error from API requests.
         if ($userId !== null) {
             $userId = (int) $userId;
         }
@@ -45,7 +39,7 @@ class AiProviderFactory
             throw new Exception("Provider {$provider->name} is not active");
         }
 
-        // Get credentials (Now receives strictly ?int)
+        // Get credentials
         $credential = $this->getCredential($provider, $userId);
 
         if (!$credential) {

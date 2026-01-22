@@ -24,12 +24,6 @@ class AiModelSelector
     {
         $planTier = $user->subscription?->plan_tier ?? 'free';
 
-        Log::info('Selecting model for user', [
-            'user_id' => $user->id,
-            'plan' => $planTier,
-            'requirements' => $requirements,
-        ]);
-
         // Get models available for this plan
         $availableModels = $this->modelRepository->getForPlan($planTier);
 
@@ -48,11 +42,6 @@ class AiModelSelector
 
         // Get the highest priority model
         $selectedModel = $availableModels->first();
-
-        Log::info('Model selected', [
-            'model' => $selectedModel->name,
-            'provider' => $selectedModel->provider->name,
-        ]);
 
         return $selectedModel;
     }

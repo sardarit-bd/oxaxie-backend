@@ -104,8 +104,6 @@ class AnthropicProvider implements AiProviderInterface
         string $systemPrompt,
         array $messages
     ): array {
-        Log::info('=== Anthropic: Generate Response With Messages ===');
-        Log::info('Messages count:', ['count' => count($messages)]);
 
         try {
             $response = Http::timeout(60)
@@ -130,12 +128,6 @@ class AnthropicProvider implements AiProviderInterface
             }
 
             $result = $response->json();
-            
-            Log::info('Claude Response received:', [
-                'input_tokens' => $result['usage']['input_tokens'] ?? 0,
-                'output_tokens' => $result['usage']['output_tokens'] ?? 0,
-                'content_length' => strlen($result['content'][0]['text'] ?? '')
-            ]);
 
             return [
                 'content' => $result['content'][0]['text'] ?? '',

@@ -40,7 +40,7 @@ class GenericRestAdapter implements AiProviderInterface
         array $conversationHistory,
         string $userMessage
     ): array {
-        // Build messages array
+ 
         $messages = [];
         
         foreach ($conversationHistory as $msg) {
@@ -63,22 +63,10 @@ class GenericRestAdapter implements AiProviderInterface
         array $messages
     ): array {
         try {
-            // 1. Build URL
             $url = $this->buildUrl();
-
-            // 2. Build Headers
             $headers = $this->buildHeaders();
-
-            // 3. Transform Request
             $requestBody = $this->transformRequest($messages, $systemPrompt);
 
-            Log::info('AI Request', [
-                'provider' => $this->provider->name,
-                'model' => $this->model->name,
-                'url' => $url,
-            ]);
-
-            // 4. Send Request
             $response = Http::timeout(60)
                 ->withHeaders($headers)
                 ->post($url, $requestBody);
@@ -92,7 +80,6 @@ class GenericRestAdapter implements AiProviderInterface
                 throw new Exception('AI API request failed: ' . $response->body());
             }
 
-            // 5. Parse Response
             $data = $response->json();
             return $this->parseResponse($data);
 
@@ -110,14 +97,12 @@ class GenericRestAdapter implements AiProviderInterface
         $config = $this->provider->endpoint_config;
         $endpoint = $config['endpoints']['chat'];
 
-        // Replace {model} placeholder if exists
         $endpoint = str_replace('{model}', $this->model->name, $endpoint);
 
         $url = rtrim($config['base_url'], '/') . 
                '/' . trim($config['api_version'], '/') . 
                '/' . ltrim($endpoint, '/');
 
-        // Add query param auth if needed
         if ($this->provider->auth_config['type'] === 'query_param') {
             $keyName = $this->provider->auth_config['key_name'];
             $url .= '?' . $keyName . '=' . $this->credential->api_key;
