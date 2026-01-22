@@ -32,7 +32,7 @@ class EditSubscriptionPlanModelAccess extends EditRecord
 
     protected function mutateFormDataBeforeFill(array $data): array
     {
-        // Load custom pricing if exists
+
         $pricing = AiModelPricing::where('ai_model_id', $this->record->ai_model_id)
             ->where('subscription_plan_tier', $this->record->subscription_plan_tier)
             ->active()
@@ -46,10 +46,10 @@ class EditSubscriptionPlanModelAccess extends EditRecord
         return $data;
     }
 
-    // Validate before saving
+
     protected function mutateFormDataBeforeSave(array $data): array
     {
-        // Check if changing to a duplicate combination
+
         if (isset($data['subscription_plan_tier']) || isset($data['ai_model_id'])) {
             $planTier = $data['subscription_plan_tier'] ?? $this->record->subscription_plan_tier;
             $modelId = $data['ai_model_id'] ?? $this->record->ai_model_id;
@@ -99,7 +99,6 @@ class EditSubscriptionPlanModelAccess extends EditRecord
                 ->delete();
         }
 
-        // Clear cache
         \Illuminate\Support\Facades\Cache::flush();
     }
 }

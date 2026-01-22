@@ -17,9 +17,9 @@ class EditAiProviderCredential extends EditRecord
         $providerId = $data['ai_provider_id'];
         $userId = $data['user_id'] ?? null;
 
-        // Backend check: Ensure no duplicate exists, EXCLUDING the current record
+
         $exists = AiProviderCredential::where('ai_provider_id', $providerId)
-            ->where('id', '!=', $this->record->id) // Ignore current record
+            ->where('id', '!=', $this->record->id) 
             ->where(function ($query) use ($userId) {
                 if ($userId) {
                     $query->where('user_id', $userId);

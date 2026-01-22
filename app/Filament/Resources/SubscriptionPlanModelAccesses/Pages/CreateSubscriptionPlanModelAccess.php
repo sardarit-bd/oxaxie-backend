@@ -22,10 +22,8 @@ class CreateSubscriptionPlanModelAccess extends CreateRecord
         return 'Subscription Plan Model Access created successfully';
     }
 
-    // Validate before creating
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        // Check if this combination already exists
         $exists = SubscriptionAiModelAccess::where('subscription_plan_tier', $data['subscription_plan_tier'])
             ->where('ai_model_id', $data['ai_model_id'])
             ->exists();
@@ -48,7 +46,6 @@ class CreateSubscriptionPlanModelAccess extends CreateRecord
     {
         $data = $this->data;
 
-        // Save custom pricing if provided
         if (!empty($data['custom_input_cost']) && !empty($data['custom_output_cost'])) {
             AiModelPricing::updateOrCreate(
                 [
@@ -64,7 +61,6 @@ class CreateSubscriptionPlanModelAccess extends CreateRecord
             );
         }
 
-        // Clear cache
         \Illuminate\Support\Facades\Cache::flush();
     }
 }

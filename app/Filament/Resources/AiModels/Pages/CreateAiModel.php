@@ -24,8 +24,7 @@ class CreateAiModel extends CreateRecord
                 ->body('A model with this name already exists for the selected AI Provider.')
                 ->persistent()
                 ->send();
-
-            // Halt the creation process
+                
             $this->halt();
         }
 
